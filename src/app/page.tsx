@@ -1,194 +1,225 @@
-import { getIronSession } from 'iron-session';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
-import { sessionOptions, SessionData } from '@/lib/auth/session';
-import { FileText, CreditCard, Bell, Calendar, Megaphone, ChevronRight, Wallet } from 'lucide-react';
 import Link from 'next/link';
+import { prisma } from '@/lib/db';
+import { 
+  Home, ShieldCheck, CreditCard, FileText, 
+  ArrowRight, Phone, Mail, MapPin, ChevronRight 
+} from 'lucide-react';
 
-export default async function AppPage() {
-  const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
-  if (!session.userId) redirect('/login');
+// Делаем страницу динамической, чтобы новости подтягивались из БД
+export const dynamic = 'force-dynamic';
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    include: {
-      owner: {
-        include: {
-          garages: { include: { garage: true } },
-          charges: {
-            where: { status: 'awaiting_payment' },
-            orderBy: { period: 'desc' } // Сначала новые
-          }
-        },
-      },
-    },
+export default async function PublicHomePage() {
+  // Подтягиваем 3 последние опубликованные новости
+  const latestNews = await prisma.news.findMany({
+    where: { status: 'published' },
+    orderBy: { publishedAt: 'desc' },
+    take: 3,
   });
 
-  if (!user) redirect('/login');
-
-  const garages = user.owner?.garages || [];
-  const unpaidCharges = user.owner?.charges || [];
-  
-  // Считаем общую сумму долга
-  const totalDebt = unpaidCharges.reduce((acc, charge) => acc + Number(charge.amount), 0) || 0;
-
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-      {/* Приветствие */}
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-          Здравствуйте, {user.fullName.split(' ')[1] || user.fullName}!
-        </h1>
-        <p className="text-slate-500 mt-2">
-          Добро пожаловать в личный кабинет собственника.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
-        {/* ЛЕВАЯ КОЛОНКА */}
-        <div className="lg:col-span-2 space-y-6">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Шапка сайта */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3">
+            {/* Заменили иконку Home на нашу картинку */}
+            <img 
+              src="/garage-icon.png" 
+              alt="ГСК Контакт" 
+              className="w-12 h-12 object-contain" 
+            />
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 leading-tight">ГСК «Контакт»</h1>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Цифровая платформа</p>
+            </div>
+          </Link>
           
-          {/* Блок "К оплате" */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden max-w-xl">
-            <div className="relative z-10">
-              <p className="text-blue-100 text-sm mb-1">Текущая задолженность за электроэнергию</p>
-              <p className="text-4xl sm:text-5xl font-bold mb-6">
-                {totalDebt.toLocaleString('ru-RU')} ₽
+          <div className="hidden md:flex items-center gap-6">
+            <Link href="#features" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Возможности</Link>
+            <Link href="/news" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Новости</Link>
+            <Link href="/documents" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Документы</Link>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link 
+              href="/login" 
+              className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition shadow-sm"
+            >
+              Войти в кабинет
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* Главный баннер (Hero) */}
+      <section className="relative bg-white overflow-hidden">
+        <div className="absolute inset-y-0 w-full h-full bg-[url('/garage-icon.png')] bg-no-repeat bg-right-bottom bg-contain opacity-5 pointer-events-none" />
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32 relative z-10">
+          <div className="max-w-2xl">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-tight mb-6">
+              Управляйте гаражом <br/>
+              <span className="text-blue-600">в один клик</span>
+            </h1>
+            <p className="text-lg text-slate-600 mb-8 leading-relaxed">
+              Передавайте показания счётчиков, оплачивайте электроэнергию без комиссии и следите за новостями кооператива с любого устройства.
+            </p>
+            <div className="flex flex-wrap gap-4">
+              <Link 
+                href="/login" 
+                className="flex items-center gap-2 px-8 py-4 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/20"
+              >
+                Передать показания
+                <ArrowRight size={18} />
+              </Link>
+              <Link 
+                href="#features" 
+                className="flex items-center gap-2 px-8 py-4 bg-white text-slate-700 border border-slate-200 font-medium rounded-xl hover:bg-slate-50 transition"
+              >
+                Узнать больше
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Блок преимуществ */}
+      <section id="features" className="py-20 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Всё для вашего удобства</h2>
+            <p className="text-slate-500 max-w-2xl mx-auto">Мы перенесли все бюрократические процессы в цифровой формат, чтобы вы тратили меньше времени и нервов.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Карточка 1 */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition">
+              <div className="bg-blue-50 w-14 h-14 rounded-2xl flex items-center justify-center text-blue-600 mb-6">
+                <ShieldCheck size={28} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-3">Безопасность</h3>
+              <p className="text-slate-500 leading-relaxed text-sm">
+                Вход в систему защищён кодом из SMS. Ваши персональные данные и история начислений надёжно хранятся в базе.
               </p>
-              
-              {/* Кнопки действий */}
-              <div className="flex flex-wrap gap-3">
-                <Link href="/app/charges" className="inline-block bg-white text-blue-700 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-50 transition">
-                  История начислений
-                </Link>
-                
-                {/* Кнопка "Оплатить" появляется только если есть долг */}
-                {totalDebt > 0 && (
-                  <Link href={unpaidCharges.length > 0 ? `/app/charges/${unpaidCharges[0].id}/pay` : '/app/charges'} className="inline-flex items-center gap-2 bg-blue-500 text-white border border-blue-400 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-400 transition shadow-sm">
-                    <Wallet size={16} />
-                    Оплатить
-                  </Link>
-                )}
-              </div>
             </div>
-            <CreditCard className="absolute -right-4 -bottom-4 text-blue-500/30 w-40 h-40" />
+
+            {/* Карточка 2 */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition">
+              <div className="bg-green-50 w-14 h-14 rounded-2xl flex items-center justify-center text-green-600 mb-6">
+                <CreditCard size={28} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-3">Оплата онлайн</h3>
+              <p className="text-slate-500 leading-relaxed text-sm">
+                Забудьте про очереди. Оплачивайте электроэнергию через СБП или по QR-коду, а все квитанции храните в личном кабинете.
+              </p>
+            </div>
+
+            {/* Карточка 3 */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition">
+              <div className="bg-amber-50 w-14 h-14 rounded-2xl flex items-center justify-center text-amber-600 mb-6">
+                <FileText size={28} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-3">Прозрачность</h3>
+              <p className="text-slate-500 leading-relaxed text-sm">
+                Все решения Правления, тарифы, отчёты и История ваших начислений всегда под рукой. Доступ в личном кабинете.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Последние новости */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-end mb-10">
+            <div>
+              <h2 className="text-3xl font-bold text-slate-900 mb-2">Новости кооператива</h2>
+              <p className="text-slate-500">Будьте в курсе последних событий ГСК</p>
+            </div>
+            <Link href="/news" className="hidden sm:flex items-center gap-1 text-blue-600 font-medium hover:text-blue-700 transition">
+              Все новости <ChevronRight size={18} />
+            </Link>
           </div>
 
-          {/* Мои гаражи */}
-          <div>
-            <div className="flex items-center gap-4 mb-6">
-              <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                <img src="/garage-icon.png" alt="Гаражи" className="w-10 h-10 object-contain" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {latestNews.length === 0 ? (
+              <div className="col-span-3 bg-slate-50 p-8 rounded-2xl text-center border border-slate-100">
+                <p className="text-slate-500">Пока нет опубликованных новостей. Как только Правление добавит их в админке, они появятся здесь.</p>
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">
-                Мои гаражи
-              </h2>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {garages.length === 0 ? (
-                <div className="bg-white p-8 rounded-2xl border border-slate-100 text-slate-500 text-sm text-center sm:col-span-2 flex flex-col items-center justify-center relative overflow-hidden">
-                  <img src="/garage-icon.png" alt="" className="w-20 h-20 opacity-10 mb-3" />
-                  <p className="relative z-10 font-medium">У вас пока нет привязанных гаражей.</p>
-                  <p className="relative z-10 text-xs mt-1 text-slate-400">Обратитесь к председателю для добавления.</p>
-                </div>
-              ) : (
-                garages.map((og) => (
-                  <div key={og.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col relative overflow-hidden group">
-                    
-                    <img 
-                      src="/garage-icon.png" 
-                      alt="" 
-                      className="absolute -right-4 -bottom-4 w-24 h-24 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none" 
-                    />
-
-                    <div className="relative z-10 flex justify-between items-start mb-4">
-                      <div>
-                        <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Гараж</p>
-                        <p className="text-xl font-bold text-slate-900">
-                          Блок {og.garage.block} · Бокс {og.garage.number}
-                        </p>
-                      </div>
-                      <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-md font-medium">
-                        Активен
-                      </span>
-                    </div>
-                    
-                    <div className="relative z-10 mt-auto border-t border-slate-100 pt-4 flex gap-2">
-                      <Link href="/app/readings" className="flex-1 bg-blue-50 text-blue-700 text-center py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition">
-                        Показания
-                      </Link>
-                      <button className="px-4 bg-slate-50 text-slate-700 rounded-lg hover:bg-slate-100 transition">
-                        <FileText size={18} />
-                      </button>
-                    </div>
+            ) : (
+              latestNews.map((news) => (
+                <div key={news.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden hover:shadow-lg transition flex flex-col">
+                  {news.coverUrl && (
+                    <img src={news.coverUrl} alt={news.title} className="w-full h-48 object-cover" />
+                  )}
+                  <div className="p-6 flex-1 flex flex-col">
+                    <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">
+                      {news.category === 'important' ? 'Важное' : 'Новости'}
+                    </span>
+                    <h3 className="text-lg font-bold text-slate-900 mb-3 line-clamp-2">{news.title}</h3>
+                    <p className="text-slate-500 text-sm mb-4 line-clamp-3">{news.excerpt}</p>
+                    <Link href={`/news/${news.slug}`} className="mt-auto text-blue-600 text-sm font-medium hover:underline">
+                      Читать далее →
+                    </Link>
                   </div>
-                ))
-              )}
-            </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <div className="mt-8 text-center sm:hidden">
+            <Link href="/news" className="inline-flex items-center gap-1 text-blue-600 font-medium">
+              Все новости <ChevronRight size={18} />
+            </Link>
           </div>
         </div>
+      </section>
 
-        {/* СРЕДНЯЯ КОЛОНКА */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <Megaphone size={24} className="text-blue-500 mb-4" />
-            <h3 className="font-bold text-slate-900 mb-2">Добро пожаловать!</h3>
-            <p className="text-sm text-slate-500 leading-relaxed">
-              Теперь вы можете передавать показания ПУ, получать расчёт и квитанции об оплате онлайн в своём личном кабинете.
+      {/* Футер */}
+      <footer className="bg-slate-900 text-slate-300 py-12 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div>
+            <div className="flex items-center gap-2 text-white font-bold text-lg mb-4">
+              <Home size={24} />
+              <span>ГСК «Контакт»</span>
+            </div>
+            <p className="text-sm text-slate-400 max-w-xs">
+              Официальный сайт гаражно-строительного кооператива. Удобный сервис для собственников.
             </p>
           </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <Calendar size={24} className="text-amber-500 mb-4" />
-            <h3 className="font-bold text-slate-900 mb-2">График работы</h3>
-            <p className="text-sm text-slate-500 leading-relaxed">
-              В праздничные дни прием Правления осуществляется по субботам с 10:00 до 14:00.
-            </p>
+          
+          <div>
+            <h4 className="text-white font-semibold mb-4 uppercase tracking-wider text-sm">Навигация</h4>
+            <ul className="space-y-2 text-sm">
+              <li><Link href="/news" className="hover:text-white transition">Новости</Link></li>
+              <li><Link href="/documents" className="hover:text-white transition">Документы</Link></li>
+              <li><Link href="/login" className="hover:text-white transition">Личный кабинет</Link></li>
+              <li><Link href="/admin/login" className="hover:text-white transition">Для персонала</Link></li>
+            </ul>
+          </div>
+          
+          <div>
+            <h4 className="text-white font-semibold mb-4 uppercase tracking-wider text-sm">Контакты</h4>
+            <ul className="space-y-3 text-sm">
+              <li className="flex items-start gap-3">
+                <MapPin size={18} className="text-slate-500 shrink-0" />
+                <span>164500, Архангельская обл,<br/>г. Северодвинск, ул. Окружная 28</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <Phone size={18} className="text-slate-500 shrink-0" />
+                <span>+7 (900) 765-43-21</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <Mail size={18} className="text-slate-500 shrink-0" />
+                <span>info@gsk-kontakt.ru</span>
+              </li>
+            </ul>
           </div>
         </div>
-
-        {/* ПРАВАЯ КОЛОНКА */}
-        <div className="lg:col-span-1 space-y-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <Bell size={22} className="text-slate-500" />
-            События
-          </h2>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col max-h-[400px] overflow-y-auto">
-            <div className="p-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer flex justify-between items-center group">
-              <div>
-                <p className="font-medium text-slate-900 text-sm">Добро пожаловать!</p>
-                <p className="text-xs text-slate-500 mt-1">Показания теперь онлайн.</p>
-              </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition" />
-            </div>
-            <div className="p-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer flex justify-between items-center group">
-              <div>
-                <p className="font-medium text-slate-900 text-sm">График Правления</p>
-                <p className="text-xs text-slate-500 mt-1">В праздники — по субботам.</p>
-              </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition" />
-            </div>
-            <div className="p-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer flex justify-between items-center group">
-              <div>
-                <p className="font-medium text-slate-900 text-sm">Общее собрание</p>
-                <p className="text-xs text-slate-500 mt-1">Состоится 15 ноября в 12:00.</p>
-              </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition" />
-            </div>
-            <div className="p-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer flex justify-between items-center group">
-              <div>
-                <p className="font-medium text-slate-900 text-sm">Плановые работы</p>
-                <p className="text-xs text-slate-500 mt-1">Отключение света 20 октября.</p>
-              </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition" />
-            </div>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-8 border-t border-slate-800 text-center text-xs text-slate-500">
+          © {new Date().getFullYear()} ГСК «Контакт». Все права защищены.
         </div>
-
-      </div>
+      </footer>
     </div>
   );
 }
