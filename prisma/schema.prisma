@@ -1,0 +1,1012 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  owner
+  accountant
+  chairman
+  admin
+  moderator
+  electrician
+}
+
+enum UserStatus {
+  active
+  blocked
+  archived
+}
+
+enum PhoneStatus {
+  pending_confirmation
+  confirmed
+  disabled
+  archived
+}
+
+enum MeteringType {
+  single
+  dual
+}
+
+enum MeterStatus {
+  active
+  replaced
+  removed
+  under_check
+  inactive
+  faulty
+}
+
+enum ReadingStatus {
+  submitted
+  verified
+  rejected
+  requires_check
+  pending
+}
+
+enum ReadingSource {
+  owner
+  admin
+  import
+  operator
+  system
+}
+
+enum GarageStatus {
+  active
+  archived
+  no_owner
+  disabled
+  inactive
+}
+
+enum OwnershipType {
+  owner
+  co_owner
+  tenant
+  family
+  other
+}
+
+enum TariffType {
+  single
+  dual
+}
+
+enum TariffStatus {
+  draft
+  active
+  archived
+}
+
+enum PaymentType {
+  electricity
+  debt_payment
+  debt_carryover
+  membership_fee
+  maintenance_fee
+  targeted_fee
+  penalty
+  adjustment
+}
+
+enum ChargeSource {
+  reading
+  average
+  norm
+  manual
+  adjustment
+  debt_carryover
+  debt_payment
+}
+
+enum ChargeStatus {
+  pending
+  awaiting_payment
+  paid
+  overdue
+  cancelled
+  partial
+}
+
+enum PaymentProvider {
+  yookassa
+  cloudpayments
+  sberbank
+  tinkoff
+  manual
+  other
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+  canceled
+}
+
+enum PaymentAttemptStatus {
+  created
+  pending
+  processing
+  succeeded
+  failed
+  expired
+  canceled
+}
+
+enum AdjustmentType {
+  surcharge
+  refund
+  transfer
+  reading_fix
+  tariff_fix
+  recalculation
+  correction
+  discount
+  penalty
+  write_off
+}
+
+enum DocumentType {
+  general_meeting
+  board_report
+  board_decision
+  announcement
+  other
+}
+
+enum DocumentStatus {
+  draft
+  active
+  repealed
+}
+
+enum NewsCategory {
+  important
+  electricity
+  documents
+  meetings
+  improvement
+  announcements
+  other
+}
+
+enum NewsPriority {
+  normal
+  important
+  urgent
+}
+
+enum NewsStatus {
+  draft
+  scheduled
+  published
+  archived
+  unpublished
+}
+
+enum AppealTopic {
+  access
+  metering
+  payment
+  negative_reading
+  meter_replacement
+  other
+}
+
+enum AppealStatus {
+  new
+  in_progress
+  resolved
+  rejected
+}
+
+enum AdCategory {
+  parts_sale
+  parts_buy
+  services
+  rent
+  other
+}
+
+enum AdStatus {
+  draft
+  pending
+  published
+  rejected
+  archived
+}
+
+enum NotificationChannel {
+  sms
+  email
+  push
+  internal
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  delivered
+  failed
+}
+
+enum ImportType {
+  garages
+  owners
+  owner_garage
+  meters
+  debts
+}
+
+enum ImportStatus {
+  uploaded
+  processing
+  preview
+  completed
+  failed
+  cancelled
+}
+
+enum ImportRowStatus {
+  success
+  error
+  warning
+  skipped
+}
+
+enum ProblemType {
+  negative_reading_attempts
+  no_readings_multiple_periods
+  repeated_payment_failures
+  other
+}
+
+enum ProblemStatus {
+  new
+  in_progress
+  resolved
+  ignored
+}
+
+// ============================================
+// ПОЛЬЗОВАТЕЛИ И ДОСТУП
+// ============================================
+
+model User {
+  id           String      @id @default(uuid())
+  phone        String?     @unique
+  email        String?
+  fullName     String      @map("full_name")
+  role         UserRole
+  status       UserStatus  @default(active)
+  passwordHash String?     @map("password_hash")
+  lastLoginAt  DateTime?   @map("last_login_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  deletedAt    DateTime?   @map("deleted_at")
+
+  phones   UserPhone[]
+  sessions Session[]
+  owner    Owner?
+  payments Payment[]
+
+  @@map("users")
+}
+
+model UserPhone {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  phone       String      @unique
+  status      PhoneStatus @default(pending_confirmation)
+  confirmedAt DateTime?   @map("confirmed_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_phones")
+}
+
+model Session {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  tokenHash      String    @map("token_hash")
+  ip             String?
+  userAgent      String?   @map("user_agent")
+  expiresAt      DateTime  @map("expires_at")
+  lastActivityAt DateTime? @map("last_activity_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================
+// СОБСТВЕННИКИ, ГАРАЖИ, СЧЁТЧИКИ
+// ============================================
+
+model Owner {
+  id        String   @id @default(uuid())
+  userId    String?  @unique @map("user_id")
+  fullName  String   @map("full_name")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User?         @relation(fields: [userId], references: [id])
+  garages  OwnerGarage[]
+  balances OwnerBalance?
+  charges   Charge[]
+
+  @@map("owners")
+}
+
+model Garage {
+  id               String       @id @default(uuid())
+  
+  // Строгий порядок: Ряд - Блок - Бокс
+  row              Int          // Ряд 
+  block            String       // Блок (1 или 2)
+  number           Int          // Номер бокса
+  
+  floors           Int          @default(1) // Этажность (1 или 2)
+  cadastralNumber  String?      @map("cadastral_number") 
+  areaSqm          Decimal?     @map("area_sqm") @db.Decimal(10, 2) 
+  notes            String?      
+  
+  status           GarageStatus @default(active)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  owners           OwnerGarage[]
+  meters           Meter[]
+  balance          GarageBalance?
+  charges          Charge[]
+
+  @@unique([row, block, number]) // <-- Порядок тоже изменен
+  @@map("garages")
+}
+
+model OwnerGarage {
+  id            String        @id @default(uuid())
+  ownerId       String        @map("owner_id")
+  garageId      String        @map("garage_id")
+  ownershipType OwnershipType @map("ownership_type")
+  share         Decimal       @default(1.0) @db.Decimal(5, 2)
+  startedAt     DateTime      @default(now()) @map("started_at")
+  endedAt       DateTime?     @map("ended_at")
+
+  owner  Owner  @relation(fields: [ownerId], references: [id])
+  garage Garage @relation(fields: [garageId], references: [id])
+
+  @@map("owner_garage")
+}
+
+model Meter {
+  id                 String       @id @default(uuid())
+  garageId           String       @map("garage_id")
+  serialNumber       String       @unique @map("serial_number")
+  meteringType       MeteringType @map("metering_type")
+  initialReadingT1   Decimal      @map("initial_reading_t1") @db.Decimal(12, 2)
+  initialReadingT2   Decimal?     @map("initial_reading_t2") @db.Decimal(12, 2)
+  initialReadingDate DateTime     @map("initial_reading_date")
+  installedAt        DateTime?    @map("installed_at")
+  removedAt          DateTime?    @map("removed_at")
+  status             MeterStatus  @default(active)
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  garage   Garage    @relation(fields: [garageId], references: [id])
+  readings Reading[]
+  charges  Charge[]
+  @@map("meters")
+}
+
+// ============================================
+// ПОКАЗАНИЯ
+// ============================================
+
+model Reading {
+  id              String        @id @default(uuid())
+  meterId         String        @map("meter_id")
+  period          DateTime
+  readingT1       Decimal       @map("reading_t1") @db.Decimal(12, 2)
+  readingT2       Decimal?      @map("reading_t2") @db.Decimal(12, 2)
+  photoUrl        String?       @map("photo_url")
+  source          ReadingSource @default(owner)
+  status          ReadingStatus @default(submitted)
+  isFirst         Boolean       @default(false) @map("is_first")
+  submittedById   String?       @map("submitted_by_id")
+  submittedAt     DateTime      @default(now()) @map("submitted_at")
+  verifiedById    String?       @map("verified_by_id")
+  verifiedAt      DateTime?     @map("verified_at")
+  rejectionReason String?       @map("rejection_reason")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  meter Meter @relation(fields: [meterId], references: [id])
+  charges Charge[]
+
+  @@unique([meterId, period])
+  @@map("readings")
+}
+
+model ReadingAttempt {
+  id                    String   @id @default(uuid())
+  meterId               String   @map("meter_id")
+  period                DateTime
+  userId                String?  @map("user_id")
+  enteredT1             Decimal  @map("entered_t1") @db.Decimal(12, 2)
+  enteredT2             Decimal? @map("entered_t2") @db.Decimal(12, 2)
+  previousT1            Decimal  @map("previous_t1") @db.Decimal(12, 2)
+  previousT2            Decimal? @map("previous_t2") @db.Decimal(12, 2)
+  calculatedConsumption Decimal  @map("calculated_consumption") @db.Decimal(12, 2)
+  reason                String
+  resolution            String?
+  appealId              String?  @map("appeal_id")
+  correctedReadingId    String?  @map("corrected_reading_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@map("reading_attempts")
+}
+
+// ============================================
+// ТАРИФЫ
+// ============================================
+
+model TariffSet {
+  id          String       @id @default(uuid())
+  name        String
+  paymentType PaymentType  @default(electricity) @map("payment_type")
+  tariffType  TariffType   @map("tariff_type")
+  priceT1     Decimal      @map("price_t1") @db.Decimal(10, 2)
+  priceT2     Decimal?     @map("price_t2") @db.Decimal(10, 2)
+  validFrom   DateTime     @map("valid_from")
+  validTo     DateTime?    @map("valid_to")
+  status      TariffStatus @default(draft)
+  documentId  String?      @map("document_id")
+  createdById String?      @map("created_by_id")
+  replacesId  String?      @map("replaces_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@map("tariff_sets")
+}
+
+// ============================================
+// НАЧИСЛЕНИЯ И ПЛАТЕЖИ
+// ============================================
+
+model Charge {
+  id                      String       @id @default(uuid())
+  garageId                String       @map("garage_id")
+  ownerId                 String       @map("owner_id")
+  meterId                 String?      @map("meter_id")
+  readingId               String?      @map("reading_id")
+  period                  DateTime
+  paymentType             PaymentType  @map("payment_type")
+  consumptionT1           Decimal?     @map("consumption_t1") @db.Decimal(12, 2)
+  consumptionT2           Decimal?     @map("consumption_t2") @db.Decimal(12, 2)
+  tariffT1                Decimal?     @map("tariff_t1") @db.Decimal(10, 2)
+  tariffT2                Decimal?     @map("tariff_t2") @db.Decimal(10, 2)
+  amount                  Decimal      @db.Decimal(12, 2)
+  tariffSetId             String?      @map("tariff_set_id")
+  source                  ChargeSource
+  isProvisional           Boolean      @default(false) @map("is_provisional")
+  recalculatedAt          DateTime?    @map("recalculated_at")
+  recalculatedByReadingId String?      @map("recalculated_by_reading_id")
+  paidAmount              Decimal      @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  attemptInProgress       Boolean      @default(false) @map("attempt_in_progress")
+  lastAttemptAt           DateTime?    @map("last_attempt_at")
+  status                  ChargeStatus @default(pending)
+  previousReadingId       String?      @map("previous_reading_id")
+  previousReadingSource   String?      @map("previous_reading_source")
+  createdAt               DateTime     @default(now()) @map("created_at")
+  updatedAt               DateTime     @updatedAt @map("updated_at")
+  garage                  Garage       @relation(fields: [garageId], references: [id])
+  owner                   Owner        @relation(fields: [ownerId], references: [id])
+  meter                   Meter?       @relation(fields: [meterId], references: [id])
+  reading                 Reading?     @relation(fields: [readingId], references: [id])
+  payments                Payment[]
+
+  @@unique([garageId, period, paymentType])
+  @@map("charges")
+}
+
+model Payment {
+  id                String          @id @default(uuid())
+  chargeId          String?         @map("charge_id")
+  userId            String?         @map("user_id")
+  amount            Decimal         @db.Decimal(12, 2)
+  paymentType       PaymentType     @map("payment_type")
+  provider          PaymentProvider
+  providerPaymentId String?         @unique @map("provider_payment_id")
+  receiptUrl        String?         @map("receipt_url") // <-- ЭТА СТРОКА ОБЯЗАТЕЛЬНА
+  status            PaymentStatus   @default(pending)
+  paidAt            DateTime?       @map("paid_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  charge            Charge?         @relation(fields: [chargeId], references: [id])
+  user              User?           @relation(fields: [userId], references: [id])
+
+  @@map("payments")
+}
+
+model PaymentAttempt {
+  id                String               @id @default(uuid())
+  chargeId          String?              @map("charge_id")
+  userId            String?              @map("user_id")
+  amount            Decimal              @db.Decimal(12, 2)
+  provider          PaymentProvider
+  idempotencyKey    String?              @unique @map("idempotency_key")
+  providerPaymentId String?              @map("provider_payment_id")
+  status            PaymentAttemptStatus @default(created)
+  webhookPayload    Json?                @map("webhook_payload")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  @@map("payment_attempts")
+}
+
+model PaymentAllocation {
+  id        String   @id @default(uuid())
+  paymentId String   @map("payment_id")
+  chargeId  String   @map("charge_id")
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("payment_allocations")
+}
+
+model Receipt {
+  id        String   @id @default(uuid())
+  number    String   @unique
+  paymentId String   @map("payment_id")
+  chargeId  String?  @map("charge_id")
+  userId    String?  @map("user_id")
+  amount    Decimal  @db.Decimal(12, 2)
+  pdfUrl    String?  @map("pdf_url")
+  issuedAt  DateTime @default(now()) @map("issued_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("receipts")
+}
+
+model Adjustment {
+  id         String         @id @default(uuid())
+  chargeId   String?        @map("charge_id")
+  paymentId  String?        @map("payment_id")
+  type       AdjustmentType
+  amount     Decimal        @db.Decimal(12, 2)
+  reason     String
+  period     DateTime?
+  authorId   String?        @map("author_id")
+  documentId String?        @map("document_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@map("adjustments")
+}
+
+model OwnerBalance {
+  ownerId             String    @id @map("owner_id")
+  balance             Decimal   @default(0) @db.Decimal(12, 2)
+  debtAmount          Decimal   @default(0) @map("debt_amount") @db.Decimal(12, 2)
+  advanceAmount       Decimal   @default(0) @map("advance_amount") @db.Decimal(12, 2)
+  pendingRefundAmount Decimal   @default(0) @map("pending_refund_amount") @db.Decimal(12, 2)
+  lastChargeAt        DateTime? @map("last_charge_at")
+  lastPaymentAt       DateTime? @map("last_payment_at")
+  lastReconciledAt    DateTime? @map("last_reconciled_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("owner_balances")
+}
+
+model GarageBalance {
+  garageId      String   @id @map("garage_id")
+  balance       Decimal  @default(0) @db.Decimal(12, 2)
+  debtAmount    Decimal  @default(0) @map("debt_amount") @db.Decimal(12, 2)
+  advanceAmount Decimal  @default(0) @map("advance_amount") @db.Decimal(12, 2)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  garage Garage @relation(fields: [garageId], references: [id], onDelete: Cascade)
+
+  @@map("garage_balances")
+}
+
+// ============================================
+// РАССРОЧКА
+// ============================================
+
+model DebtSettlement {
+  id              String    @id @default(uuid())
+  ownerId         String    @map("owner_id")
+  garageId        String    @map("garage_id")
+  totalAmount     Decimal   @map("total_amount") @db.Decimal(12, 2)
+  months          Int
+  monthlyAmount   Decimal   @map("monthly_amount") @db.Decimal(12, 2)
+  paidAmount      Decimal   @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  remainingAmount Decimal   @map("remaining_amount") @db.Decimal(12, 2)
+  startPeriod     DateTime  @map("start_period")
+  endPeriod       DateTime  @map("end_period")
+  status          String    @default("active")
+  documentId      String?   @map("document_id")
+  ownerConsentAt  DateTime? @map("owner_consent_at")
+  createdById     String?   @map("created_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("debt_settlements")
+}
+
+model DebtSettlementPayment {
+  id           String    @id @default(uuid())
+  settlementId String    @map("settlement_id")
+  period       DateTime
+  amount       Decimal   @db.Decimal(12, 2)
+  chargeId     String?   @map("charge_id")
+  status       String    @default("pending")
+  paidAt       DateTime? @map("paid_at")
+
+  @@map("debt_settlement_payments")
+}
+
+model DebtSettlementProposal {
+  id                      String    @id @default(uuid())
+  ownerId                 String    @map("owner_id")
+  garageId                String    @map("garage_id")
+  totalDebt               Decimal   @map("total_debt") @db.Decimal(12, 2)
+  proposedMonths          Int       @map("proposed_months")
+  proposedMonthlyAmount   Decimal   @map("proposed_monthly_amount") @db.Decimal(12, 2)
+  proposedStartPeriod     DateTime  @map("proposed_start_period")
+  status                  String    @default("draft")
+  sentAt                  DateTime? @map("sent_at")
+  respondedAt             DateTime? @map("responded_at")
+  rejectionReason         String?   @map("rejection_reason")
+  boardDecisionDocumentId String?   @map("board_decision_document_id")
+  createdById             String?   @map("created_by_id")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@map("debt_settlement_proposals")
+}
+
+// ============================================
+// ВОЗВРАТЫ
+// ============================================
+
+model RefundRequest {
+  id               String    @id @default(uuid())
+  ownerId          String    @map("owner_id")
+  paymentId        String?   @map("payment_id")
+  amount           Decimal   @db.Decimal(12, 2)
+  reason           String
+  cardDetails      Json?     @map("card_details")
+  status           String    @default("submitted")
+  reviewedById     String?   @map("reviewed_by_id")
+  reviewedAt       DateTime? @map("reviewed_at")
+  rejectionReason  String?   @map("rejection_reason")
+  providerRefundId String?   @map("provider_refund_id")
+  processedAt      DateTime? @map("processed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("refund_requests")
+}
+
+model Refund {
+  id               String    @id @default(uuid())
+  requestId        String?   @map("request_id")
+  paymentId        String    @map("payment_id")
+  ownerId          String    @map("owner_id")
+  amount           Decimal   @db.Decimal(12, 2)
+  provider         String
+  providerRefundId String?   @unique @map("provider_refund_id")
+  status           String    @default("pending")
+  reason           String
+  createdById      String?   @map("created_by_id")
+  processedAt      DateTime? @map("processed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@map("refunds")
+}
+
+// ============================================
+// СУДЕБНЫЕ ДОЛГИ
+// ============================================
+
+model LegalDebt {
+  id              String    @id @default(uuid())
+  ownerId         String    @map("owner_id")
+  garageId        String    @map("garage_id")
+  amount          Decimal   @db.Decimal(12, 2)
+  periodFrom      DateTime  @map("period_from")
+  periodTo        DateTime  @map("period_to")
+  courtCaseNumber String?   @map("court_case_number")
+  courtDate       DateTime? @map("court_date")
+  status          String    @default("pre_trial")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("legal_debts")
+}
+
+// ============================================
+// ДОКУМЕНТЫ
+// ============================================
+
+model Document {
+  id                 String         @id @default(uuid())
+  type               DocumentType
+  number             String?
+  title              String
+  description        String?
+  status             DocumentStatus @default(draft)
+  adoptedAt          DateTime?      @map("adopted_at")
+  publishedAt        DateTime?      @map("published_at")
+  pdfUrl             String?        @map("pdf_url")
+  version            Int            @default(1)
+  replacesDocumentId String?        @map("replaces_document_id")
+  publishedById      String?        @map("published_by_id")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@map("documents")
+}
+
+// ============================================
+// НОВОСТИ
+// ============================================
+
+model News {
+  id                      String       @id @default(uuid())
+  title                   String
+  slug                    String       @unique
+  excerpt                 String?
+  body                    String
+  category                NewsCategory
+  priority                NewsPriority @default(normal)
+  status                  NewsStatus   @default(draft)
+  requiresAcknowledgement Boolean      @default(false) @map("requires_acknowledgement")
+  publishedAt             DateTime?    @map("published_at")
+  expiresAt               DateTime?    @map("expires_at")
+  coverUrl                String?      @map("cover_url")
+  authorId                String?      @map("author_id")
+  createdAt               DateTime     @default(now()) @map("created_at")
+  updatedAt               DateTime     @updatedAt @map("updated_at")
+
+  acknowledgements NewsAcknowledgement[]
+
+  @@map("news")
+}
+
+model NewsAcknowledgement {
+  id             String   @id @default(uuid())
+  newsId         String   @map("news_id")
+  userId         String   @map("user_id")
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at")
+
+  news News @relation(fields: [newsId], references: [id], onDelete: Cascade)
+
+  @@unique([newsId, userId])
+  @@map("news_acknowledgements")
+}
+
+// ============================================
+// ОБЪЯВЛЕНИЯ (КОММЕРЦИЯ)
+// ============================================
+
+model Ad {
+  id                String     @id @default(uuid())
+  userId            String     @map("user_id")
+  category          AdCategory
+  title             String
+  body              String
+  price             Decimal?   @db.Decimal(12, 2)
+  priceNegotiable   Boolean    @default(false) @map("price_negotiable")
+  contactPhone      String?    @map("contact_phone")
+  contactMethod     String?    @map("contact_method")
+  status            AdStatus   @default(draft)
+  moderationComment String?    @map("moderation_comment")
+  moderatedById     String?    @map("moderated_by_id")
+  publishedAt       DateTime?  @map("published_at")
+  expiresAt         DateTime?  @map("expires_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  photos AdPhoto[]
+
+  @@map("ads")
+}
+
+model AdPhoto {
+  id        String   @id @default(uuid())
+  adId      String   @map("ad_id")
+  url       String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ad Ad @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@map("ad_photos")
+}
+
+// ============================================
+// ОБРАЩЕНИЯ
+// ============================================
+
+model Appeal {
+  id           String       @id @default(uuid())
+  userId       String?      @map("user_id")
+  topic        AppealTopic
+  subject      String
+  body         String
+  contactPhone String?      @map("contact_phone")
+  contactEmail String?      @map("contact_email")
+  status       AppealStatus @default(new)
+  assignedToId String?      @map("assigned_to_id")
+  resolution   String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@map("appeals")
+}
+
+// ============================================
+// УВЕДОМЛЕНИЯ
+// ============================================
+
+model Notification {
+  id           String              @id @default(uuid())
+  userId       String?             @map("user_id")
+  type         String
+  channel      NotificationChannel
+  templateCode String?             @map("template_code")
+  payload      Json?
+  status       NotificationStatus  @default(queued)
+  sentAt       DateTime?           @map("sent_at")
+  deliveredAt  DateTime?           @map("delivered_at")
+  errorMessage String?             @map("error_message")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+// ============================================
+// ИМПОРТ
+// ============================================
+
+model ImportBatch {
+  id            String       @id @default(uuid())
+  type          ImportType
+  fileUrl       String?      @map("file_url")
+  fileName      String?      @map("file_name")
+  fileSize      Int?         @map("file_size")
+  status        ImportStatus @default(uploaded)
+  totalRows     Int          @default(0) @map("total_rows")
+  successRows   Int          @default(0) @map("success_rows")
+  errorRows     Int          @default(0) @map("error_rows")
+  warningRows   Int          @default(0) @map("warning_rows")
+  errors        Json?
+  uploadedById  String?      @map("uploaded_by_id")
+  uploadedAt    DateTime     @default(now()) @map("uploaded_at")
+  processedAt   DateTime?    @map("processed_at")
+  confirmedAt   DateTime?    @map("confirmed_at")
+  confirmedById String?      @map("confirmed_by_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  rows ImportRow[]
+
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id           String          @id @default(uuid())
+  batchId      String          @map("batch_id")
+  rowNumber    Int             @map("row_number")
+  rawData      Json?           @map("raw_data")
+  parsedData   Json?           @map("parsed_data")
+  status       ImportRowStatus
+  errorMessage String?         @map("error_message")
+  errorField   String?         @map("error_field")
+  entityId     String?         @map("entity_id")
+  entityType   String?         @map("entity_type")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  batch ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("import_rows")
+}
+
+// ============================================
+// ПРОБЛЕМНЫЕ ГАРАЖИ
+// ============================================
+
+model ProblemGarage {
+  id             String        @id @default(uuid())
+  garageId       String        @map("garage_id")
+  type           ProblemType
+  severity       String        @default("medium")
+  details        Json?
+  status         ProblemStatus @default(new)
+  assignedToId   String?       @map("assigned_to_id")
+  resolvedAt     DateTime?     @map("resolved_at")
+  resolutionNote String?       @map("resolution_note")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@map("problem_garages")
+}
+
+// ============================================
+// АУДИТ
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?  @map("actor_id")
+  actorRole  String?  @map("actor_role")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  before     Json?
+  after      Json?
+  reason     String?
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
+
+// ============================================
+// НАСТРОЙКИ ГСК
+// ============================================
+
+model CooperativeSettings {
+  id                       String   @id @default(uuid())
+  name                     String   @default("ГСК «Контакт»")
+  address                  String?
+  inn                      String?
+  ogrn                     String?
+  startDate                DateTime @map("start_date")
+  chairmanUserId           String?  @map("chairman_user_id")
+  averageMonths            Int      @default(3) @map("average_months")
+  normKwhPerMonth          Decimal  @default(200) @map("norm_kwh_per_month") @db.Decimal(10, 2)
+  maxMonthsWithoutReadings Int      @default(3) @map("max_months_without_readings")
+  readingPeriodStartDay    Int      @default(25) @map("reading_period_start_day")
+  readingPeriodEndDay      Int      @default(5) @map("reading_period_end_day")
+  paymentDueDays           Int      @default(10) @map("payment_due_days")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@map("cooperative_settings")
+}
+
+model AuthCode {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  code      String
+  expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("auth_codes")
+}
