@@ -18,172 +18,176 @@ export async function POST(request: NextRequest) {
 
     if (!worksheet) return NextResponse.json({ ok: false, error: { message: 'В файле нет листов' } }, { status: 400 });
 
-    // ==========================================
-    // УМНЫЙ ПОИСК КОЛОНОК ПО ЗАГОЛОВКАМ
-    // ==========================================
-    const headerRow = worksheet.getRow(1);
-    const colMap: Record<string, number> = {};
-
-    // Функция нормализации (меняет русские буквы-двойники на английские и убирает пробелы)
-    const normalizeText = (text: string) => {
-      return text.toLowerCase()
-        .replace(/[т]/g, 't')
-        .replace(/[р]/g, 'p')
-        .replace(/[а]/g, 'a')
-        .replace(/[е]/g, 'e')
-        .replace(/[о]/g, 'o')
-        .replace(/\s+/g, ''); 
-    };
-
-    headerRow.eachCell((cell, colNumber) => {
-      const headerText = cell.text?.trim();
-      if (headerText) {
-        colMap[normalizeText(headerText)] = colNumber;
-      }
-    });
-
-    // Хелпер для проверки, есть ли колонка (использует нормализацию)
-    const hasCol = (name: string) => !!colMap[normalizeText(name)];
-
-    // Проверка наличия обязательных колонок
-    if (type === 'garages' && (!hasCol('Блок') || !hasCol('Ряд') || (!hasCol('Номер') && !hasCol('Бокс')))) {
-      return NextResponse.json({ ok: false, error: { message: 'В файле не найдены колонки "Блок", "Ряд" или "Номер/Бокс"' } }, { status: 400 });
-    }
-    if (type === 'readings' && (!hasCol('Блок') || !hasCol('Ряд') || (!hasCol('Бокс') && !hasCol('Номер')) || (!hasCol('Показание T1') && !hasCol('T1')))) {
-      return NextResponse.json({ ok: false, error: { message: 'В файле не найдены нужные колонки для показаний (Блок, Ряд, Бокс, Показание T1)' } }, { status: 400 });
-    }
-    if (type === 'owners' && (!hasCol('Блок') || !hasCol('Ряд') || (!hasCol('Номер') && !hasCol('Бокс')))) {
-      return NextResponse.json({ ok: false, error: { message: 'В файле не найдены колонки "Блок", "Ряд" или "Номер/Бокс"' } }, { status: 400 });
-    }
-
     let successCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
 
     // ==========================================
-    // ОБРАБОТКА ДАННЫХ
+    // ИМПОРТ ГАРАЖЕЙ
     // ==========================================
-    for (let i = 2; i <= worksheet.rowCount; i++) {
-      const row = worksheet.getRow(i);
-      if (!row.hasValues) continue;
+    if (type === 'garages') {
+      for (let i = 2; i <= worksheet.rowCount; i++) {
+        const row = worksheet.getRow(i);
+        if (!row.hasValues) continue;
 
-      // Хелпер для получения значения (тоже использует нормализацию)
-      const getVal = (name: string) => {
-        const colIdx = colMap[normalizeText(name)];
-        return colIdx ? row.getCell(colIdx).text?.trim() : undefined;
-      };
-
-        const rowNum = parseInt(getVal('Ряд') || '', 10);
-        const block = getVal('Блок');
-
-       if (isNaN(rowNum) || !block) {
-        errorCount++;
-        errors.push(`Строка ${i}: Неверные данные (Ряд или Блок)`); // <-- Теперь Ряд первый 
-        continue;
-      }
-
-       if (type === 'garages' || type === 'owners') {
-        const boxStr = getVal('Бокс') || getVal('Номер');
-        const number = parseInt(boxStr || '', 10);
-        const floors = parseInt(getVal('Этажность') || '1', 10);
-        const cadastral = getVal('Кадастровый номер') || getVal('Кадастр') || null;
-        const areaStr = getVal('Площадь');
+        // 1:Ряд, 2:Блок, 3:Бокс, 4:Этажность, 5:Площадь
+        const rowVal = row.getCell(1).text?.trim();
+        const blockVal = row.getCell(2).text?.trim();
+        const number = parseInt(row.getCell(3).text?.trim(), 10);
+        const floorsNum = parseInt(row.getCell(4).text?.trim(), 10) || 1;
+        const areaStr = row.getCell(5).text?.trim();
         const area = areaStr ? parseFloat(areaStr.replace(',', '.')) : null;
 
-        if (isNaN(number)) {
+        if (!rowVal || !blockVal || isNaN(number)) {
           errorCount++;
-          errors.push(`Строка ${i}: Неверный Бокс`);
+          errors.push(`Строка ${i}: Неверные данные (Ряд, Блок или Бокс)`);
           continue;
         }
 
         try {
-          const garage = await prisma.garage.upsert({
-            // БЫЛО: where: { block_row_number: { block, row: rowNum, number } },
-            // СТАЛО:
-            where: { row_block_number: { row: rowNum, block, number } },
-            update: { areaSqm: area, floors, cadastralNumber: cadastral },
-            create: { block, row: rowNum, number, floors, cadastralNumber: cadastral, areaSqm: area, status: 'active' }
+          await prisma.garage.upsert({
+            where: { row_block_number: { row: rowVal, block: blockVal, number } },
+            update: { areaSqm: area ? area : undefined, floors: floorsNum },
+            create: { row: rowVal, block: blockVal, number, floors: floorsNum, areaSqm: area ? area : null, status: 'active' }
           });
-
-          if (type === 'owners') {
-            const fullName = getVal('ФИО');
-            const rawPhone = getVal('Телефон');
-
-            if (!fullName || !rawPhone) {
-              errorCount++;
-              errors.push(`Строка ${i}: Нет ФИО или Телефона`);
-              continue;
-            }
-
-            const phone = normalizePhone(rawPhone);
-            if (!isValidPhone(phone)) {
-              errorCount++;
-              errors.push(`Строка ${i}: Неверный телефон (${rawPhone})`);
-              continue;
-            }
-
-            let user = await prisma.user.findUnique({ where: { phone } });
-            if (!user) {
-              user = await prisma.user.create({
-                data: {
-                  phone, fullName, role: 'owner', status: 'active',
-                  phones: { create: { phone, status: 'confirmed', confirmedAt: new Date() } }
-                }
-              });
-            }
-            let owner = await prisma.owner.findUnique({ where: { userId: user.id } });
-            if (!owner) owner = await prisma.owner.create({ data: { userId: user.id, fullName, status: 'active' } });
-
-            const existingLink = await prisma.ownerGarage.findFirst({ where: { ownerId: owner.id, garageId: garage.id, endedAt: null } });
-            if (!existingLink) {
-              await prisma.ownerGarage.create({ data: { ownerId: owner.id, garageId: garage.id, ownershipType: 'owner', share: 1.0 } });
-            }
-          }
           successCount++;
         } catch (e) {
           errorCount++;
-          errors.push(`Строка ${i}: Ошибка сохранения`);
+          errors.push(`Строка ${i}: Ошибка БД`);
         }
-      } 
-      
-      else if (type === 'readings') {
-        const boxStr = getVal('Бокс') || getVal('Номер');
-        const t1Str = (getVal('Показание T1') || getVal('T1'))?.replace(',', '.');
-        const t2Str = (getVal('Показание T2') || getVal('T2'))?.replace(',', '.');
+      }
+    } 
+    
+    // ==========================================
+    // ИМПОРТ СОБСТВЕННИКОВ (создает и гаражи, и людей)
+    // ==========================================
+        else if (type === 'owners') {
+      for (let i = 2; i <= worksheet.rowCount; i++) {
+        const row = worksheet.getRow(i);
+        if (!row.hasValues) continue;
+
+        // 1:Ряд, 2:Блок, 3:Бокс, 4:ФИО, 5:Этажность, 6:Площадь, 7:Кадастр, 8:Телефон
+        const rowVal = row.getCell(1).text?.trim();
+        const blockVal = row.getCell(2).text?.trim();
+        const number = parseInt(row.getCell(3).text?.trim(), 10);
+        const fullName = row.getCell(4).text?.trim();
+        const floorsNum = parseInt(row.getCell(5).text?.trim(), 10) || 1;
+        const areaStr = row.getCell(6).text?.trim();
+        const area = areaStr ? parseFloat(areaStr.replace(',', '.')) : null;
+        const cadastralNumber = row.getCell(7).text?.trim() || null;
+        const rawPhone = row.getCell(8).text?.trim();
+
+        // Проверяем только данные ГАРАЖА (Ряд, Блок, Бокс) — они обязательны всегда
+        if (!rowVal || !blockVal || isNaN(number)) {
+          errorCount++;
+          errors.push(`Строка ${i}: Неверные данные гаража (Ряд, Блок или Бокс)`);
+          continue;
+        }
+
+        try {
+          // 1. Создаем или обновляем ГАРАЖ
+          const garage = await prisma.garage.upsert({
+            where: { row_block_number: { row: rowVal, block: blockVal, number } },
+            update: { 
+              areaSqm: area ? area : undefined,
+              floors: floorsNum,
+              cadastralNumber: cadastralNumber || undefined
+            },
+            create: { 
+              row: rowVal, block: blockVal, number, floors: floorsNum, 
+              areaSqm: area ? area : null, cadastralNumber: cadastralNumber || null, status: 'active' 
+            }
+          });
+
+          // 2. Если ФИО или Телефон пустые — гараж создан, идем к следующей строке
+          if (!fullName || !rawPhone) {
+            successCount++;
+            continue; 
+          }
+
+          // 3. Если данные есть, проверяем телефон и привязываем собственника
+          const phone = normalizePhone(rawPhone);
+          if (!isValidPhone(phone)) {
+            errorCount++;
+            errors.push(`Строка ${i}: Неверный телефон, но гараж создан.`);
+            continue;
+          }
+
+          let user = await prisma.user.findUnique({ where: { phone } });
+          if (!user) {
+            user = await prisma.user.create({
+              data: { phone, fullName, role: 'owner', status: 'active', phones: { create: { phone, status: 'confirmed', confirmedAt: new Date() } } }
+            });
+          }
+
+          let owner = await prisma.owner.findUnique({ where: { userId: user.id } });
+          if (!owner) {
+            owner = await prisma.owner.create({ data: { userId: user.id, fullName, status: 'active' } });
+          }
+
+          const existingLink = await prisma.ownerGarage.findFirst({
+            where: { ownerId: owner.id, garageId: garage.id, endedAt: null }
+          });
+
+          if (!existingLink) {
+            await prisma.ownerGarage.create({ data: { ownerId: owner.id, garageId: garage.id, ownershipType: 'owner', share: 1.0 } });
+          }
+
+          successCount++;
+        } catch (dbError) {
+          errorCount++;
+          errors.push(`Строка ${i}: Ошибка БД`);
+        }
+      }
+    }
+    
+    // ==========================================
+    // ИМПОРТ ПОКАЗАНИЙ ПУ
+    // ==========================================
+    else if (type === 'readings') {
+      const now = new Date();
+      const currentPeriod = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+
+      for (let i = 2; i <= worksheet.rowCount; i++) {
+        const row = worksheet.getRow(i);
+        if (!row.hasValues) continue;
+
+        // 1:Ряд, 2:Блок, 3:Бокс, 4:Показание T1, 5:Показание T2
+        const rowVal = row.getCell(1).text?.trim();
+        const blockVal = row.getCell(2).text?.trim();
+        const number = parseInt(row.getCell(3).text?.trim(), 10);
+        const t1Str = row.getCell(4).text?.trim().replace(',', '.');
+        const t2Str = row.getCell(5).text?.trim().replace(',', '.');
         
-        const number = parseInt(boxStr || '', 10);
         const readingT1 = t1Str ? Number(t1Str) : null;
         const readingT2 = t2Str ? Number(t2Str) : null;
 
-        if (isNaN(number) || readingT1 === null) {
+        if (!rowVal || !blockVal || isNaN(number) || readingT1 === null) {
           errorCount++;
-          errors.push(`Строка ${i}: Неверные данные (Бокс или T1)`);
+          errors.push(`Строка ${i}: Неверные данные (Ряд, Блок, Бокс или Показание T1)`);
           continue;
         }
 
         try {
           const garage = await prisma.garage.findUnique({
-            where: { row_block_number: { row: rowNum, block, number } },
+            where: { row_block_number: { row: rowVal, block: blockVal, number } },
             include: { meters: { where: { status: 'active' } } }
           });
 
           if (!garage || garage.meters.length === 0) {
             errorCount++;
-            errors.push(`Строка ${i}: Гараж не найден или нет ПУ`);
+            errors.push(`Строка ${i}: Гараж не найден или у него нет активного ПУ`);
             continue;
           }
           
           const meter = garage.meters[0];
-          const now = new Date();
-          const currentPeriod = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-
           await prisma.reading.upsert({
             where: { meterId_period: { meterId: meter.id, period: currentPeriod } },
             update: { readingT1, readingT2, source: 'import', status: 'submitted' },
             create: { meterId: meter.id, period: currentPeriod, readingT1, readingT2, source: 'import', status: 'submitted' }
           });
           successCount++;
-        } catch (dbError) {
+        } catch (e) {
           errorCount++;
           errors.push(`Строка ${i}: Ошибка БД`);
         }
@@ -192,10 +196,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      data: { message: `Импорт завершен. Успешно: ${successCount}, Ошибок: ${errorCount}`, rows: successCount, errors: errors.slice(0, 10) }
+      data: {
+        message: `Импорт завершен. Успешно: ${successCount}, Ошибок: ${errorCount}`,
+        rows: successCount,
+        errors: errors.slice(0, 10)
+      }
     });
+
   } catch (error) {
-    console.error('Import error:', error);
-    return NextResponse.json({ ok: false, error: { message: 'Ошибка сервера' } }, { status: 500 });
+    console.error('Import upload error:', error);
+    return NextResponse.json({ ok: false, error: { message: 'Ошибка при чтении файла' } }, { status: 500 });
   }
 }

@@ -6,11 +6,15 @@ import { sessionOptions, SessionData } from '@/lib/auth/session';
 import { z } from 'zod';
 
 const updateGarageSchema = z.object({
+  row: z.string().min(1).optional(),
+  block: z.string().min(1).optional(),
+  number: z.number().int().positive().optional(),
   floors: z.number().int().min(1).max(2).optional(),
   areaSqm: z.number().positive().nullable().optional(),
   cadastralNumber: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
-  clearOwner: z.boolean().optional(), // <-- Добавили флаг для отвязки
+  status: z.string().optional(),
+  clearOwner: z.boolean().optional(),
 });
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,25 +34,28 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const data = result.data;
 
-    // Используем транзакцию, чтобы изменения применились либо вместе, либо никак
     await prisma.$transaction(async (tx) => {
       
-      // 1. Обновляем характеристики гаража
+      // 1. Обновляем характеристики гаража (только те, которые пришли)
       await tx.garage.update({
         where: { id },
         data: {
+          row: data.row,
+          block: data.block,
+          number: data.number,
           floors: data.floors,
           areaSqm: data.areaSqm,
           cadastralNumber: data.cadastralNumber,
           notes: data.notes,
+          status: data.status,
         }
       });
 
       // 2. Если передан флаг clearOwner, отвязываем всех текущих собственников
       if (data.clearOwner) {
         await tx.ownerGarage.updateMany({
-          where: { garageId: id, endedAt: null }, // Ищем активные связи
-          data: { endedAt: new Date() }           // Закрываем период владения
+          where: { garageId: id, endedAt: null },
+          data: { endedAt: new Date() }
         });
       }
     });

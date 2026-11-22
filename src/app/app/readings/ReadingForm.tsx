@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
-// Описываем, какие данные придут из базы
 type MeterData = {
   id: string;
   serialNumber: string;
   meteringType: 'single' | 'dual';
   garage: { block: string; number: number };
   previousReading: { t1: number; t2: number | null } | null;
+  isSubmitted: boolean; // <-- Добавили новое поле
 };
 
 export default function ReadingForm({ meters }: { meters: MeterData[] }) {
@@ -50,7 +51,11 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
         setSuccess(data.data);
         setT1('');
         setT2('');
-        router.refresh(); // Обновляем данные на странице (чтобы подтянулись новые предыдущие показания)
+        router.refresh(); 
+
+        setTimeout(() => {
+          router.push('/app');
+        }, 3000);
       } else {
         setError(data.error?.message || 'Ошибка при передаче');
       }
@@ -69,11 +74,85 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
     );
   }
 
+  // ЭКРАН УСПЕХА (после отправки, на 3 секунды)
+  if (success) {
+    return (
+      <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm text-center flex flex-col items-center justify-center min-h-[400px]">
+        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+          <CheckCircle2 size={40} className="text-green-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Показания приняты!</h2>
+        <p className="text-slate-500 mb-8">{success.message}</p>
+        
+        <div className="bg-slate-50 px-6 py-4 rounded-xl border border-slate-100 mb-8 w-full max-w-xs">
+          <p className="text-sm text-slate-500 mb-1">Ваш расход за период:</p>
+          <p className="text-2xl font-bold text-slate-900">
+            {success.reading.consumptionT1} кВт·ч
+            {success.reading.consumptionT2 !== null && (
+              <span className="block text-base font-normal text-slate-500 mt-1">
+                (День) / {success.reading.consumptionT2} кВт·ч (Ночь)
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 text-sm text-blue-600 bg-blue-50 px-4 py-2 rounded-lg">
+          <Loader2 size={18} className="animate-spin" />
+          <span>Возвращаемся в личный кабинет...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН "УЖЕ ПЕРЕДАНО" (если показания за этот месяц уже есть)
+  if (selectedMeter?.isSubmitted) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Выберите гараж</label>
+          <select
+            value={selectedMeterId}
+            onChange={(e) => setSelectedMeterId(e.target.value)}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white mb-6"
+          >
+            {meters.map((m) => (
+              <option key={m.id} value={m.id}>
+                Блок {m.garage.block} · Бокс {m.garage.number} (Счётчик № {m.serialNumber})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="bg-green-50 border border-green-200 text-green-800 p-6 rounded-2xl flex flex-col items-center text-center">
+          <CheckCircle2 size={40} className="text-green-600 mb-3" />
+          <h3 className="text-lg font-bold mb-1">Показания уже переданы</h3>
+          <p className="text-sm mb-4">Вы успешно передали данные за текущий месяц.</p>
+          
+          <div className="bg-white px-6 py-3 rounded-xl shadow-sm border border-green-100 mb-6 w-full max-w-xs">
+            <p className="text-xs text-slate-500 mb-1">Ваше показание:</p>
+            <p className="text-xl font-bold text-slate-900">T1: {selectedMeter.previousReading?.t1} кВт·ч</p>
+            {selectedMeter.meteringType === 'dual' && (
+              <p className="text-xl font-bold text-slate-900">T2: {selectedMeter.previousReading?.t2} кВт·ч</p>
+            )}
+          </div>
+
+          <Link 
+            href="/app" 
+            className="w-full sm:w-auto px-8 py-3 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition flex items-center justify-center gap-2"
+          >
+            Вернуться в кабинет
+            <ArrowRight size={18} />
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ОБЫЧНАЯ ФОРМА (если показаний еще нет)
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-6">
         
-        {/* Выбор гаража/счетчика */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">Выберите гараж</label>
           <select
@@ -83,7 +162,6 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
               setT1('');
               setT2('');
               setError('');
-              setSuccess(null);
             }}
             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
           >
@@ -95,7 +173,6 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
           </select>
         </div>
 
-        {/* Информация о предыдущих показаниях */}
         {selectedMeter && (
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
             <p className="text-sm text-slate-500 mb-1">Предыдущие показания:</p>
@@ -108,7 +185,6 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
           </div>
         )}
 
-        {/* Поля ввода */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -143,7 +219,6 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
           )}
         </div>
 
-        {/* Сообщения об ошибках или успехе */}
         {error && (
           <div className="bg-red-50 text-red-700 p-4 rounded-xl flex items-start gap-3">
             <AlertCircle className="shrink-0 mt-0.5" size={20} />
@@ -151,20 +226,6 @@ export default function ReadingForm({ meters }: { meters: MeterData[] }) {
           </div>
         )}
 
-        {success && (
-          <div className="bg-green-50 text-green-700 p-4 rounded-xl flex items-start gap-3">
-            <CheckCircle2 className="shrink-0 mt-0.5" size={20} />
-            <div>
-              <p className="text-sm font-medium">{success.message}</p>
-              <p className="text-xs mt-1">
-                Расход: {success.reading.consumptionT1} кВт·ч
-                {success.reading.consumptionT2 !== null && ` (День) / ${success.reading.consumptionT2} кВт·ч (Ночь)`}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Кнопка отправки */}
         <button
           type="submit"
           disabled={loading || !t1 || (selectedMeter?.meteringType === 'dual' && !t2)}

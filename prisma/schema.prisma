@@ -69,6 +69,7 @@ enum GarageStatus {
   no_owner
   disabled
   inactive
+  under_construction // Для строящихся гаражей застройщика
 }
 
 enum OwnershipType {
@@ -303,6 +304,8 @@ model User {
   sessions Session[]
   owner    Owner?
   payments Payment[]
+  news     News[]
+  appeals  Appeal[]
 
   @@map("users")
 }
@@ -351,7 +354,7 @@ model Owner {
   user     User?         @relation(fields: [userId], references: [id])
   garages  OwnerGarage[]
   balances OwnerBalance?
-  charges   Charge[]
+  charges  Charge[]
 
   @@map("owners")
 }
@@ -360,25 +363,28 @@ model Garage {
   id               String       @id @default(uuid())
   
   // Строгий порядок: Ряд - Блок - Бокс
-  row              Int          // Ряд 
-  block            String       // Блок (1 или 2)
-  number           Int          // Номер бокса
+  row              String       // Ряд (например, "6" или "6/1")
+  block            String       // Блок (например, "1" или "2")
+  number           Int          // Номер бокса (например, 32)
   
+  // Дополнительные характеристики
   floors           Int          @default(1) // Этажность (1 или 2)
-  cadastralNumber  String?      @map("cadastral_number") 
-  areaSqm          Decimal?     @map("area_sqm") @db.Decimal(10, 2) 
-  notes            String?      
+  cadastralNumber  String?      @map("cadastral_number") // Кадастровый номер
+  areaSqm          Decimal?     @map("area_sqm") @db.Decimal(10, 2) // Площадь
+  notes            String?      // Примечания
   
   status           GarageStatus @default(active)
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
+  // Связи
   owners           OwnerGarage[]
   meters           Meter[]
   balance          GarageBalance?
   charges          Charge[]
 
-  @@unique([row, block, number]) // <-- Порядок тоже изменен
+  // Уникальность
+  @@unique([row, block, number])
   @@map("garages")
 }
 
@@ -410,10 +416,31 @@ model Meter {
   status             MeterStatus  @default(active)
   createdAt          DateTime     @default(now()) @map("created_at")
 
-  garage   Garage    @relation(fields: [garageId], references: [id])
-  readings Reading[]
-  charges  Charge[]
+  garage       Garage            @relation(fields: [garageId], references: [id])
+  readings     Reading[]
+  charges      Charge[]
+  // Убрали старую строку replacements и оставили только эти две:
+  oldReplacements MeterReplacement[] @relation("OldMeter")
+  newReplacements MeterReplacement[] @relation("NewMeter")
+
   @@map("meters")
+}
+
+model MeterReplacement {
+  id                 String   @id @default(uuid())
+  oldMeterId         String   @map("old_meter_id")
+  newMeterId         String   @map("new_meter_id")
+  replacedAt         DateTime @map("replaced_at")
+  oldFinalReadingT1  Decimal  @map("old_final_reading_t1") @db.Decimal(12, 2)
+  oldFinalReadingT2  Decimal? @map("old_final_reading_t2") @db.Decimal(12, 2)
+  reason             String
+  performedById      String?  @map("performed_by_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  oldMeter Meter @relation("OldMeter", fields: [oldMeterId], references: [id])
+  newMeter Meter @relation("NewMeter", fields: [newMeterId], references: [id])
+
+  @@map("meter_replacements")
 }
 
 // ============================================
@@ -438,7 +465,7 @@ model Reading {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  meter Meter @relation(fields: [meterId], references: [id])
+  meter   Meter    @relation(fields: [meterId], references: [id])
   charges Charge[]
 
   @@unique([meterId, period])
@@ -517,6 +544,7 @@ model Charge {
   previousReadingSource   String?      @map("previous_reading_source")
   createdAt               DateTime     @default(now()) @map("created_at")
   updatedAt               DateTime     @updatedAt @map("updated_at")
+  
   garage                  Garage       @relation(fields: [garageId], references: [id])
   owner                   Owner        @relation(fields: [ownerId], references: [id])
   meter                   Meter?       @relation(fields: [meterId], references: [id])
@@ -535,7 +563,7 @@ model Payment {
   paymentType       PaymentType     @map("payment_type")
   provider          PaymentProvider
   providerPaymentId String?         @unique @map("provider_payment_id")
-  receiptUrl        String?         @map("receipt_url") // <-- ЭТА СТРОКА ОБЯЗАТЕЛЬНА
+  receiptUrl        String?         @map("receipt_url")
   status            PaymentStatus   @default(pending)
   paidAt            DateTime?       @map("paid_at")
   createdAt         DateTime        @default(now()) @map("created_at")
@@ -791,6 +819,7 @@ model News {
   authorId                String?      @map("author_id")
   createdAt               DateTime     @default(now()) @map("created_at")
   updatedAt               DateTime     @updatedAt @map("updated_at")
+  author                  User?        @relation(fields: [authorId], references: [id])
 
   acknowledgements NewsAcknowledgement[]
 
@@ -863,8 +892,14 @@ model Appeal {
   status       AppealStatus @default(new)
   assignedToId String?      @map("assigned_to_id")
   resolution   String?
+  
+  // НОВОЕ ПОЛЕ: По умолчанию true (создатель прочитал), а при ответе админа ставим false
+  isReadByOwner Boolean     @default(true) @map("is_read_by_owner") 
+  
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  user         User?        @relation(fields: [userId], references: [id])
 
   @@map("appeals")
 }

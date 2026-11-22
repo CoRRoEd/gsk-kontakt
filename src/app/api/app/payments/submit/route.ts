@@ -9,65 +9,79 @@ import { join } from 'path';
 export async function POST(request: NextRequest) {
   try {
     const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
-    if (!session.userId) {
-      return NextResponse.json({ ok: false, error: { message: 'Не авторизован' } }, { status: 401 });
-    }
+    if (!session.userId) return NextResponse.json({ ok: false, error: { message: 'Не авторизован' } }, { status: 401 });
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const chargeId = formData.get('chargeId') as string;
+    const chargeIdsRaw = formData.get('chargeIds') as string;
 
-    if (!file || !chargeId) {
-      return NextResponse.json({ ok: false, error: { message: 'Не хватает данных' } }, { status: 400 });
+    if (!file || !chargeIdsRaw) {
+      return NextResponse.json({ ok: false, error: { message: 'Не хватает данных для загрузки чека' } }, { status: 400 });
     }
 
-    // 1. Проверяем начисление
-    const charge = await prisma.charge.findUnique({
-      where: { id: chargeId }
-    });
-
-    if (!charge) {
-      return NextResponse.json({ ok: false, error: { message: 'Начисление не найдено' } }, { status: 404 });
+    // Парсим массив ID
+    let chargeIds: string[] = [];
+    try {
+      chargeIds = JSON.parse(chargeIdsRaw);
+    } catch {
+      return NextResponse.json({ ok: false, error: { message: 'Неверный формат ID счетов' } }, { status: 400 });
     }
 
-    // 2. Сохраняем файл на сервер (в папку public/uploads)
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Генерируем уникальное имя файла, чтобы чеки не перезаписывали друг друга
-    const uniqueFileName = `receipt_${chargeId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
-    
-    // Создаем папку, если ее нет
-    const uploadDir = join(process.cwd(), 'public', 'uploads');
-    await mkdir(uploadDir, { recursive: true });
-    
-    // Записываем файл
-    const filePath = join(uploadDir, uniqueFileName);
-    await writeFile(filePath, buffer);
-
-    const fileUrl = `/uploads/${uniqueFileName}`;
-
-    // 3. Создаем запись о платеже в базе данных
-    const payment = await prisma.payment.create({
-      data: {
-        chargeId: charge.id,
-        userId: session.userId,
-        amount: charge.amount,
-        paymentType: charge.paymentType,
-        provider: 'manual', // Указываем, что это ручной перевод с чеком
-        status: 'pending', // Ожидает подтверждения бухгалтером
-        receiptUrl: fileUrl,
+    // 1. Находим все счета, которые пользователь пытается оплатить
+    const charges = await prisma.charge.findMany({
+      where: { 
+        id: { in: chargeIds }, 
+        status: 'awaiting_payment' 
       }
     });
 
-    // 4. Можно добавить проверку: если по этому начислению уже есть платеж в статусе pending, 
-    // возможно, стоит отклонить повторную загрузку. Но для MVP оставим так.
+    if (charges.length === 0) {
+      return NextResponse.json({ ok: false, error: { message: 'Счета не найдены или уже оплачены' } }, { status: 400 });
+    }
 
-    return NextResponse.json({
-      ok: true,
-      data: { message: 'Чек успешно загружен и отправлен на проверку' }
+    // Считаем общую сумму (на случай, если кто-то подделал запрос)
+    const totalAmount = charges.reduce((acc, c) => acc + Number(c.amount), 0);
+
+    // 2. Сохраняем файл чека на сервер
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    
+    // Уникальное имя файла
+    const uniqueFileName = `receipt_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
+    const uploadDir = join(process.cwd(), 'public', 'uploads');
+    
+    await mkdir(uploadDir, { recursive: true });
+    await writeFile(join(uploadDir, uniqueFileName), buffer);
+    const fileUrl = `/uploads/${uniqueFileName}`;
+
+    // 3. Создаем один платеж на общую сумму и распределяем его
+    await prisma.$transaction(async (tx) => {
+      // Создаем общий платеж (статус pending, ждет проверки бухгалтера)
+      const payment = await tx.payment.create({
+        data: {
+          userId: session.userId,
+          amount: totalAmount,
+          paymentType: 'electricity', // основной тип
+          provider: 'manual',
+          status: 'pending',
+          receiptUrl: fileUrl,
+        }
+      });
+
+      // Распределяем оплату по каждому счету (PaymentAllocation)
+      for (const charge of charges) {
+        await tx.paymentAllocation.create({
+          data: {
+            paymentId: payment.id,
+            chargeId: charge.id,
+            amount: charge.amount,
+          }
+        });
+      }
     });
 
+    return NextResponse.json({ ok: true, data: { message: 'Чек успешно загружен и отправлен на проверку' } });
+    
   } catch (error) {
     console.error('Payment submit error:', error);
     return NextResponse.json({ ok: false, error: { message: 'Ошибка сервера при загрузке чека' } }, { status: 500 });

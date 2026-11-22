@@ -32,6 +32,7 @@ export default async function AppPage() {
   }
 
   const garages = user.owner?.garages || [];
+  const garages = rawGarages.filter((v, i, a) => a.findIndex(t => t.garageId === v.garageId) === i);
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">

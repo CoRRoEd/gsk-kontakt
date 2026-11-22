@@ -9,11 +9,12 @@ import { sessionOptions, SessionData } from '@/lib/auth/session';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const result = verifyCodeSchema.safeParse(body);
 
+    // 1. Валидация
+    const result = verifyCodeSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json(
-        { ok: false, error: { code: 'VALIDATION_ERROR', message: result.error.errors[0]?.message } },
+        { ok: false, error: { code: 'VALIDATION_ERROR', message: result.error.errors[0]?.message || 'Неверные данные' } },
         { status: 400 }
       );
     }
@@ -22,65 +23,124 @@ export async function POST(request: NextRequest) {
     const { code } = result.data;
 
     if (!isValidPhone(phone)) {
-      return NextResponse.json({ ok: false, error: { code: 'VALIDATION_ERROR', message: 'Неверный формат' } }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Неверный формат телефона' } },
+        { status: 400 }
+      );
     }
 
-    // Ищем код в БАЗЕ ДАННЫХ
-    const stored = await prisma.authCode.findUnique({ where: { phone } });
-
-    // --- ОТЛАДОЧНЫЙ ЛОГ ---
-    console.log('DEBUG VERIFY:', { 
-      phone, 
-      enteredCode: code, 
-      foundInDb: stored ? stored.code : 'НЕ НАЙДЕН',
-      attempts: stored ? stored.attempts : 0
+    // 2. Проверяем код в базе данных
+    const authCode = await prisma.authCode.findUnique({
+      where: { phone }
     });
 
-    if (!stored) {
-      return NextResponse.json({ ok: false, error: { code: 'INVALID_CODE', message: 'Код не найден. Запросите новый.' } }, { status: 400 });
+    if (!authCode) {
+      return NextResponse.json(
+        { ok: false, error: { code: 'INVALID_CODE', message: 'Код не найден. Запросите новый.' } },
+        { status: 400 }
+      );
     }
 
-    if (new Date() > stored.expiresAt) {
+    if (new Date() > authCode.expiresAt) {
       await prisma.authCode.delete({ where: { phone } });
-      return NextResponse.json({ ok: false, error: { code: 'CODE_EXPIRED', message: 'Код истек. Запросите новый.' } }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: { code: 'CODE_EXPIRED', message: 'Код истёк. Запросите новый.' } },
+        { status: 400 }
+      );
     }
 
-    if (stored.attempts >= 3) {
+    if (authCode.attempts >= 3) {
       await prisma.authCode.delete({ where: { phone } });
-      return NextResponse.json({ ok: false, error: { code: 'TOO_MANY_ATTEMPTS', message: 'Слишком много попыток.' } }, { status: 429 });
+      return NextResponse.json(
+        { ok: false, error: { code: 'TOO_MANY_ATTEMPTS', message: 'Слишком много попыток. Запросите новый код.' } },
+        { status: 429 }
+      );
     }
 
-    if (stored.code !== code) {
-      await prisma.authCode.update({ where: { phone }, data: { attempts: stored.attempts + 1 } });
-      return NextResponse.json({ ok: false, error: { code: 'INVALID_CODE', message: 'Неверный код' } }, { status: 400 });
+    if (authCode.code !== code) {
+      await prisma.authCode.update({
+        where: { phone },
+        data: { attempts: { increment: 1 } }
+      });
+      return NextResponse.json(
+        { ok: false, error: { code: 'INVALID_CODE', message: 'Неверный код' } },
+        { status: 400 }
+      );
     }
 
-    // Код верный — удаляем из базы
+    // Код верный — удаляем его из базы
     await prisma.authCode.delete({ where: { phone } });
 
-    // Находим пользователя и создаем сессию
-    const userPhone = await prisma.userPhone.findUnique({ where: { phone }, include: { user: true } });
+    // 3. Находим пользователя и его профиль собственника
+    const userPhone = await prisma.userPhone.findUnique({
+      where: { phone },
+      include: { user: { include: { owner: true } } },
+    });
+
     if (!userPhone || !userPhone.user) {
-      return NextResponse.json({ ok: false, error: { code: 'USER_NOT_FOUND', message: 'Пользователь не найден' } }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: { code: 'USER_NOT_FOUND', message: 'Пользователь не найден' } },
+        { status: 404 }
+      );
     }
 
+    if (userPhone.user.status !== 'active') {
+      return NextResponse.json(
+        { ok: false, error: { code: 'USER_BLOCKED', message: 'Доступ заблокирован' } },
+        { status: 403 }
+      );
+    }
+
+    // 4. Проверка для сотрудников (персонала)
+    if (userPhone.user.role !== 'owner') {
+      // Если это сотрудник без гаража — запрещаем вход в кабинет собственника
+      if (!userPhone.user.owner) {
+        return NextResponse.json(
+          { ok: false, error: { code: 'WRONG_PORTAL', message: 'Вход в кабинет собственника запрещен. Используйте админ-панель.' } },
+          { status: 403 }
+        );
+      }
+      // Если у сотрудника есть гараж — пускаем, но сессия будет строго с ролью 'owner' (см. ниже)
+    }
+
+    // 5. Подтверждаем телефон, если он еще не подтвержден
+    if (userPhone.status === 'pending_confirmation') {
+      await prisma.userPhone.update({
+        where: { id: userPhone.id },
+        data: { status: 'confirmed', confirmedAt: new Date() },
+      });
+    }
+
+    // 6. Создаем сессию
     const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
     session.userId = userPhone.user.id;
-    session.role = userPhone.user.role;
+    session.role = 'owner'; // <-- ВСЕГДА ставим роль 'owner' для этого портала, даже если вошел Председатель
     session.phone = phone;
     await session.save();
 
-    await prisma.user.update({ where: { id: userPhone.user.id }, data: { lastLoginAt: new Date() } });
+    // 7. Обновляем дату последнего входа
+    await prisma.user.update({
+      where: { id: userPhone.user.id },
+      data: { lastLoginAt: new Date() },
+    });
 
     return NextResponse.json({
       ok: true,
       data: {
-        user: { id: userPhone.user.id, fullName: userPhone.user.fullName, role: userPhone.user.role },
-        redirect: userPhone.user.role === 'owner' ? '/app' : '/admin',
+        user: {
+          id: userPhone.user.id,
+          fullName: userPhone.user.fullName,
+          role: 'owner', // В ответе тоже указываем owner
+        },
+        redirect: '/app',
       },
     });
+
   } catch (error) {
     console.error('verify-code error:', error);
-    return NextResponse.json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Ошибка сервера' } }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: { code: 'INTERNAL_ERROR', message: 'Ошибка сервера' } },
+      { status: 500 }
+    );
   }
 }

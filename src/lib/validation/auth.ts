@@ -13,6 +13,7 @@ export const codeSchema = z
 
 export const requestCodeSchema = z.object({
   phone: phoneSchema,
+  isOwnerConfirm: z.boolean().optional(),
 });
 
 export const verifyCodeSchema = z.object({

@@ -6,7 +6,19 @@ import QRCode from 'react-qr-code';
 import { Upload, Loader2, ArrowLeft, CheckCircle2, Copy } from 'lucide-react';
 import Link from 'next/link';
 
-export default function PayForm({ chargeId, amount, period }: { chargeId: string, amount: number, period: string }) {
+export default function PayForm({ 
+  chargeId, 
+  amount, 
+  period,
+  payerName,
+  garageInfo // <-- ДОБАВИЛИ
+}: { 
+  chargeId: string; 
+  amount: number; 
+  period: string; 
+  payerName: string; 
+  garageInfo: string; // <-- ДОБАВИЛИ
+}) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -15,14 +27,13 @@ export default function PayForm({ chargeId, amount, period }: { chargeId: string
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Формируем строку для QR-кода по стандарту ГОСТ (ST00012)
-  // Сумма должна быть в копейках!
   const sumInKopecks = Math.round(amount * 100);
-  const qrData = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=Оплата электроэнергии за ${period}|Sum=${sumInKopecks}`;
+  
+  // ДОБАВИЛИ PersAcc=${garageInfo} и ${garageInfo} в Purpose
+  const qrData = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=Оплата электроэнергии, л/с ${garageInfo}, за ${period}|Sum=${sumInKopecks}|Payer=${payerName}|PersAcc=${garageInfo}`;
 
-  // 2. Функция для копирования реквизитов
   const copyToClipboard = () => {
-    const text = `Получатель: ГСК "Контакт"\nИНН: 2902027646\nКПП: 290202001\nБИК: 041117601\nР/с: 40703810804000000059\nБанк: Отделение 8637 Сбербанка России г. Архангельск\nК/с: 30101810100000000601\nСумма: ${amount} руб.\nНазначение: Оплата электроэнергии за ${period}`;
+    const text = `Получатель: ГСК "Контакт"\nИНН: 2902027646\nКПП: 290202001\nБИК: 041117601\nР/с: 40703810804000000059\nБанк: Отделение 8637 Сбербанка России г. Архангельск\nК/с: 30101810100000000601\nПлательщик: ${payerName}\nЛицевой счет: ${garageInfo}\nСумма: ${amount.toFixed(2)} руб.\nНазначение: Оплата электроэнергии за ${period}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -48,7 +59,7 @@ export default function PayForm({ chargeId, amount, period }: { chargeId: string
 
       if (data.ok) {
         setSuccess(true);
-        setTimeout(() => router.push('/app/charges'), 2000);
+        setTimeout(() => router.push('/app'), 5000); 
       } else {
         setError(data.error?.message || 'Ошибка загрузки');
       }
@@ -64,7 +75,7 @@ export default function PayForm({ chargeId, amount, period }: { chargeId: string
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center">
         <CheckCircle2 size={48} className="text-green-500 mx-auto mb-4" />
         <h2 className="text-xl font-bold text-slate-900 mb-2">Чек отправлен!</h2>
-        <p className="text-slate-500 text-sm">Бухгалтер проверит его, и оплата будет учтена.</p>
+        <p className="text-slate-500 text-sm">Бухгалтер проверит его, и долг будет списан.</p>
       </div>
     );
   }
@@ -81,7 +92,7 @@ export default function PayForm({ chargeId, amount, period }: { chargeId: string
         <div className="bg-white p-4 rounded-xl shadow-sm">
           <QRCode value={qrData} size={180} />
         </div>
-        <p className="mt-4 font-bold text-slate-900 text-2xl">{amount.toLocaleString('ru-RU')} ₽</p>
+        <p className="mt-4 font-bold text-slate-900 text-2xl">{amount.toFixed(2)} ₽</p>
       </div>
 
       {/* Реквизиты текстом */}
@@ -98,6 +109,8 @@ export default function PayForm({ chargeId, amount, period }: { chargeId: string
           <p><span className="font-medium">Р/с:</span> 40703810804000000059</p>
           <p><span className="font-medium">Банк:</span> Отделение 8637 Сбербанка России г. Архангельск</p>
           <p><span className="font-medium">БИК:</span> 041117601, <span className="font-medium">К/с:</span> 30101810100000000601</p>
+          <p><span className="font-medium">Плательщик:</span> {payerName}</p>
+          <p><span className="font-medium">Лицевой счет:</span> {garageInfo}</p> {/* <-- ДОБАВИЛИ */}
           <p><span className="font-medium">Назначение:</span> Оплата электроэнергии за {period}</p>
         </div>
       </div>

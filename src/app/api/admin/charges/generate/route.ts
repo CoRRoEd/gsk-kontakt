@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         meter: {
           include: {
             garage: {
-              include: { owners: { include: { owner: true } } }
+              include: { owners: { where: { endedAt: null }, include: { owner: true } } }
             }
           }
         }
@@ -39,13 +39,40 @@ export async function POST(request: NextRequest) {
     }
 
     let generatedCount = 0;
+    let skippedCount = 0;
 
     // 3. Обрабатываем каждое показание
     for (const reading of readings) {
       const garage = reading.meter.garage;
       const owner = garage.owners[0]?.owner; // Берем первого собственника гаража
 
-      if (!owner) continue; // Пропускаем, если у гаража нет владельца
+      if (!owner) {
+        skippedCount++; // Пропускаем, если у гаража нет владельца
+        continue; 
+      }
+
+      // === ЗАЩИТА ОТ ДУБЛИКАТОВ ===
+      // Проверяем, нет ли уже начисления за этот период по этому гаражу
+      const existingCharge = await prisma.charge.findUnique({
+        where: {
+          garageId_period_paymentType: {
+            garageId: garage.id,
+            period: reading.period,
+            paymentType: 'electricity'
+          }
+        }
+      });
+
+      if (existingCharge) {
+        // Если начисление уже есть, просто помечаем показание как проверенное, чтобы не обрабатывать его снова
+        await prisma.reading.update({
+          where: { id: reading.id },
+          data: { status: 'verified' }
+        });
+        skippedCount++;
+        continue;
+      }
+      // =========================
 
       // Находим предыдущее показание, чтобы узнать расход
       const prevReading = await prisma.reading.findFirst({
@@ -80,7 +107,7 @@ export async function POST(request: NextRequest) {
           amount: totalAmount,
           tariffSetId: activeTariff.id,
           source: 'reading',
-          status: 'awaiting_payment', // Ожидает оплаты
+          status: 'awaiting_payment',
         }
       });
 
@@ -90,7 +117,7 @@ export async function POST(request: NextRequest) {
         data: { status: 'verified' }
       });
 
-      // Обновляем баланс гаража и собственника (пока просто увеличиваем общий долг)
+      // Обновляем баланс гаража и собственника
       await prisma.garageBalance.upsert({
         where: { garageId: garage.id },
         create: { garageId: garage.id, debtAmount: totalAmount, balance: -totalAmount },
@@ -106,9 +133,13 @@ export async function POST(request: NextRequest) {
       generatedCount++;
     }
 
+    if (generatedCount === 0) {
+       return NextResponse.json({ ok: false, error: { message: `Начисления не созданы. Пропущено (уже есть): ${skippedCount}` } }, { status: 400 });
+    }
+
     return NextResponse.json({ 
       ok: true, 
-      data: { message: `Успешно сформировано начислений: ${generatedCount}` } 
+      data: { message: `Успешно сформировано: ${generatedCount}. Пропущено (дубли): ${skippedCount}` } 
     });
 
   } catch (error) {
