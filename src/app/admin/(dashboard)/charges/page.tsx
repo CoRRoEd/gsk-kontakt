@@ -6,7 +6,8 @@ import { sessionOptions, SessionData } from '@/lib/auth/session';
 import GenerateButton from './GenerateButton';
 import ManualChargeButton from './ManualChargeButton';
 import AdminChargeActions from './AdminChargeActions';
-import { Search } from 'lucide-react'; // <-- ДОБАВИЛИ ИМПОРТ
+import PrintAllButton from './PrintAllButton';
+import { Search } from 'lucide-react';
 
 export default async function ChargesPage({ 
   searchParams 
@@ -73,6 +74,7 @@ export default async function ChargesPage({
             <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
           </form>
           
+          <PrintAllButton />
           <ManualChargeButton />
           <GenerateButton />
         </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import QRCode from 'react-qr-code';
-import { Printer, QrCode, X } from 'lucide-react';
+import { Printer, QrCode, X, FileSpreadsheet } from 'lucide-react';
 import AdjustChargeButton from './AdjustChargeButton';
 
 export default function AdminChargeActions({ charge }: { charge: any }) {
@@ -24,10 +24,10 @@ export default function AdminChargeActions({ charge }: { charge: any }) {
         href={`/api/admin/charges/${charge.id}/invoice`}
         target="_blank"
         rel="noreferrer"
-        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-        title="Скачать счёт (PDF)"
+        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+        title="Скачать бланк (Excel)"
       >
-        <Printer size={18} />
+        <FileSpreadsheet size={18} />
       </a>
 
       <button

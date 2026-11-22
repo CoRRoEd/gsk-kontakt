@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import ExcelJS from 'exceljs';
 import { prisma } from '@/lib/db';
 import { getIronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 import { sessionOptions, SessionData } from '@/lib/auth/session';
-import { renderToBuffer } from '@react-pdf/renderer';
-import InvoiceDocument from '@/lib/pdf/InvoiceDocument'; // <-- Импортируем наш шаблон
-import React from 'react';
+import { drawPdk4Sheet } from '@/lib/excel/pdk4';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,41 +20,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       include: { owner: true, garage: true }
     });
 
-    if (!charge) {
-      return NextResponse.json({ ok: false, error: { message: 'Начисление не найдено' } }, { status: 404 });
-    }
+    if (!charge) return NextResponse.json({ ok: false, error: { message: 'Не найдено' } }, { status: 404 });
 
     const settings = await prisma.cooperativeSettings.findFirst();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Квитанция');
 
-    // Создаем React-элемент из нашего шаблона
-    const doc = React.createElement(InvoiceDocument, {
-      charge: { 
-        id: charge.id, 
-        period: charge.period, 
-        amount: Number(charge.amount), 
-        consumptionT1: charge.consumptionT1, 
-        tariffT1: charge.tariffT1 
-      },
-      owner: { fullName: charge.owner.fullName },
-      garage: { row: charge.garage.row, block: charge.garage.block, number: charge.garage.number },
-      cooperative: {
-        name: settings?.name || 'ГСК «Контакт»',
-        inn: settings?.inn || 'ИНН не указан',
-        address: settings?.address || 'Адрес не указан'
-      }
-    });
+    drawPdk4Sheet(worksheet, charge, settings);
 
-    const buffer = await renderToBuffer(doc as any);
-
-    return new NextResponse(buffer as any, {
+    const buffer = await workbook.xlsx.writeBuffer();
+    return new NextResponse(buffer, {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="invoice_${charge.id.substring(0,8)}.pdf"`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="invoice_${charge.id.substring(0,8)}.xlsx"`,
       },
     });
   } catch (error) {
-    console.error('Invoice PDF error:', error);
-    return NextResponse.json({ ok: false, error: { message: 'Ошибка генерации счета' } }, { status: 500 });
+    return NextResponse.json({ ok: false, error: { message: 'Ошибка' } }, { status: 500 });
   }
 }
