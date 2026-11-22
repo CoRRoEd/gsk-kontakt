@@ -1,17 +1,18 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import path from 'path';
 
-// РЕГИСТРИРУЕМ ШРИФТ
+// РЕГИСТРИРУЕМ ЛОКАЛЬНЫЙ ШРИФТ
 Font.register({
   family: 'Roboto',
   fonts: [
-    { src: 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.ttf' },
-    { src: 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc4.ttf', fontWeight: 'bold' }
+    { src: path.join(process.cwd(), 'public/fonts/Roboto-Regular.ttf') },
+    { src: path.join(process.cwd(), 'public/fonts/Roboto-Bold.ttf'), fontWeight: 'bold' }
   ]
 });
 
 const styles = StyleSheet.create({
-  page: { padding: 40, fontSize: 12, fontFamily: 'Roboto' }, // ПРИМЕНЯЕМ
+  page: { padding: 40, fontSize: 12, fontFamily: 'Roboto' },
   header: { fontSize: 18, marginBottom: 20, textAlign: 'center', fontWeight: 'bold' },
   section: { marginBottom: 15 },
   row: { flexDirection: 'row', marginBottom: 5 },
