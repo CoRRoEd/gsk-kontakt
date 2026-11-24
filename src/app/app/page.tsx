@@ -46,7 +46,7 @@ export default async function AppPage() {
   const garages = user.owner?.garages || [];
   const unpaidCharges = user.owner?.charges || [];
   
-  // Общая сумма долга
+  // Общая сумма долга (свет + взносы)
   const totalDebt = unpaidCharges.reduce((acc, charge) => acc + Number(charge.amount), 0) || 0;
   const now = new Date();
 
@@ -69,17 +69,17 @@ export default async function AppPage() {
           {/* Синяя карточка "К оплате" */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden max-w-md">
             <div className="relative z-10">
-              <p className="text-blue-100 text-sm mb-1">Текущая задолженность за электроэнергию</p>
+              <p className="text-blue-100 text-sm mb-1">Общая задолженность</p>
               <p className="text-4xl sm:text-5xl font-bold mb-6">
                 {totalDebt.toLocaleString('ru-RU')} ₽
               </p>
               
               <div className="flex flex-wrap items-center gap-3">
+                {/* ИЗМЕНЕН ТЕКСТ КНОПКИ ЗДЕСЬ */}
                 <Link href="/app/charges" className="inline-block bg-white text-blue-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-50 transition">
-                  История
+                  Подробно
                 </Link>
                 
-                {/* ВОТ ЗДЕСЬ ИСПРАВЛЕНА ССЫЛКА НА pay-all */}
                 {totalDebt > 0 && (
                   <Link href="/app/charges/pay-all" className="inline-flex items-center gap-2 bg-blue-500/50 text-white border border-blue-400 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-500 transition shadow-sm">
                     <Wallet size={16} />
@@ -154,7 +154,7 @@ export default async function AppPage() {
                           </Link>
                         )}
 
-                        {/* Умная кнопка: для конкретного гаража */}
+                        {/* Умная кнопка: Получить счёт или Оплатить счёт */}
                         {isSubmittedThisMonth || garageCharge ? (
                           <RequestInvoiceButton 
                             garageId={og.garage.id} 

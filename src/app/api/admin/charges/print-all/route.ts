@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     // Для каждого счета создаем отдельный лист
     charges.forEach((charge) => {
       // Название листа: Р1-Б17 (Ряд-Бокс)
-      const sheetName = `Р${charge.garage.row}-Б${charge.garage.number}`;
+      const sheetName = `Ряд${charge.garage.row}-Блок${charge.garage.number}`;
       const worksheet = workbook.addWorksheet(sheetName);
       drawPdk4Sheet(worksheet, charge, settings);
     });
