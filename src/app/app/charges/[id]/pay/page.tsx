@@ -14,7 +14,6 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
   if (!session.userId) redirect('/login');
 
-  // ВАЖНО: Добавили include: { owner: true, garage: true }
   const charge = await prisma.charge.findUnique({
     where: { id: chargeId },
     include: { owner: true, garage: true } 
@@ -26,8 +25,20 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
 
   const periodStr = charge.period.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
   
-  // Формируем строку с гаражом: "Ряд 6 Блок 2 Бокс 31"
+  // Формируем строку с гаражом: "6-31"
   const garageInfo = `${charge.garage.row}-${charge.garage.number}`;
+
+  // Словарь для названий услуг
+  const serviceNames: Record<string, string> = {
+    electricity: 'Электроэнергия',
+    membership_fee: 'Членский взнос',
+    targeted_fee: 'Целевой взнос',
+    maintenance_fee: 'Содержание и ремонт',
+    penalty: 'Пени / Штраф',
+    debt_carryover: 'Старый долг'
+  };
+  
+  const serviceName = serviceNames[charge.paymentType] || 'Услуги ГСК';
 
   return (
     <div className="max-w-md mx-auto p-4 sm:p-6 lg:p-8">
@@ -36,7 +47,8 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
           <ArrowLeft size={16} /> Назад
         </Link>
         <h1 className="text-2xl font-bold text-slate-900">Оплата</h1>
-        <p className="text-slate-500 mt-1 text-sm">Электроэнергия за {periodStr}</p>
+        {/* Теперь заголовок зависит от типа платежа */}
+        <p className="text-slate-500 mt-1 text-sm">{serviceName} за {periodStr}</p>
       </div>
 
       <PayForm 
@@ -44,7 +56,8 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
         amount={Number(charge.amount)} 
         period={periodStr} 
         payerName={charge.owner.fullName} 
-        garageInfo={garageInfo} // <-- ПЕРЕДАЕМ ИНФО О ГАРАЖЕ
+        garageInfo={garageInfo}
+        serviceName={serviceName} // <-- Передаем название услуги
       />
     </div>
   );

@@ -30,7 +30,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     let prevT1 = 0;
     
-    // ПРОВЕРКА: если есть счетчик (электричество), ищем предыдущие показания
     if (charge.meterId) {
       const prevReading = await prisma.reading.findFirst({
         where: { meterId: charge.meterId, period: { lt: charge.period } },
@@ -44,11 +43,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Формируем QR
+    // Словарь для названий услуг
+    const serviceNames: Record<string, string> = {
+      electricity: 'Электроэнергия',
+      membership_fee: 'Членский взнос',
+      targeted_fee: 'Целевой взнос',
+      maintenance_fee: 'Содержание и ремонт',
+      penalty: 'Пени / Штраф',
+      debt_carryover: 'Старый долг'
+    };
+    
+    const serviceName = serviceNames[charge.paymentType] || 'Услуги ГСК';
+    const periodStr = new Date(charge.period).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+
+    // Формируем QR с ПРАВИЛЬНЫМ назначением платежа
     const amount = Number(charge.amount);
     const sumInKopecks = Math.round(amount * 100);
     const lcStr = `${charge.garage.row}-${charge.garage.number}`;
-    const qrString = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=Оплата по л/с ${lcStr}|Sum=${sumInKopecks}|Payer=${charge.owner.fullName}|PersAcc=${lcStr}`;
+    
+    // В строку Purpose добавляем serviceName и periodStr
+    const qrString = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=${serviceName}, л/с ${lcStr}, за ${periodStr}|Sum=${sumInKopecks}|Payer=${charge.owner.fullName}|PersAcc=${lcStr}`;
 
     const qrDataUrl = await QRCode.toDataURL(qrString, { margin: 1, width: 200 });
 
@@ -60,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         consumptionT1: charge.consumptionT1, 
         tariffT1: charge.tariffT1,
         prevT1: prevT1,
-        paymentType: charge.paymentType // <-- Передаем тип платежа
+        paymentType: charge.paymentType
       },
       owner: { fullName: charge.owner.fullName },
       garage: { row: charge.garage.row, number: charge.garage.number },

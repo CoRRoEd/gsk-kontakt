@@ -3,21 +3,22 @@
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import QRCode from 'react-qr-code';
-import { Upload, Loader2, ArrowLeft, CheckCircle2, Copy } from 'lucide-react';
-import Link from 'next/link';
+import { Upload, Loader2, CheckCircle2, Copy } from 'lucide-react';
 
 export default function PayForm({ 
   chargeId, 
   amount, 
   period,
   payerName,
-  garageInfo // <-- ДОБАВИЛИ
+  garageInfo,
+  serviceName
 }: { 
   chargeId: string; 
   amount: number; 
   period: string; 
   payerName: string; 
-  garageInfo: string; // <-- ДОБАВИЛИ
+  garageInfo: string;
+  serviceName: string;
 }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -29,11 +30,11 @@ export default function PayForm({
 
   const sumInKopecks = Math.round(amount * 100);
   
-  // ДОБАВИЛИ PersAcc=${garageInfo} и ${garageInfo} в Purpose
-  const qrData = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=Оплата электроэнергии, л/с ${garageInfo}, за ${period}|Sum=${sumInKopecks}|Payer=${payerName}|PersAcc=${garageInfo}`;
+  // В строке QR-кода теперь используется serviceName
+  const qrData = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=${serviceName}, л/с ${garageInfo}, за ${period}|Sum=${sumInKopecks}|Payer=${payerName}|PersAcc=${garageInfo}`;
 
   const copyToClipboard = () => {
-    const text = `Получатель: ГСК "Контакт"\nИНН: 2902027646\nКПП: 290202001\nБИК: 041117601\nР/с: 40703810804000000059\nБанк: Отделение 8637 Сбербанка России г. Архангельск\nК/с: 30101810100000000601\nПлательщик: ${payerName}\nЛицевой счет: ${garageInfo}\nСумма: ${amount.toFixed(2)} руб.\nНазначение: Оплата электроэнергии за ${period}`;
+    const text = `Получатель: ГСК "Контакт"\nИНН: 2902027646\nКПП: 290202001\nБИК: 041117601\nР/с: 40703810804000000059\nБанк: Отделение 8637 Сбербанка России г. Архангельск\nК/с: 30101810100000000601\nПлательщик: ${payerName}\nЛицевой счет: ${garageInfo}\nСумма: ${amount.toFixed(2)} руб.\nНазначение: ${serviceName} за ${period}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -83,7 +84,6 @@ export default function PayForm({
   return (
     <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6">
       
-      {/* QR-код */}
       <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-xl border border-slate-100">
         <p className="text-sm text-slate-500 mb-4 text-center">
           Отсканируйте QR-код в приложении банка.<br/>
@@ -95,7 +95,6 @@ export default function PayForm({
         <p className="mt-4 font-bold text-slate-900 text-2xl">{amount.toFixed(2)} ₽</p>
       </div>
 
-      {/* Реквизиты текстом */}
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 relative">
         <div className="flex justify-between items-center mb-2">
           <p className="text-xs font-semibold text-slate-500 uppercase">Реквизиты для перевода</p>
@@ -110,8 +109,9 @@ export default function PayForm({
           <p><span className="font-medium">Банк:</span> Отделение 8637 Сбербанка России г. Архангельск</p>
           <p><span className="font-medium">БИК:</span> 041117601, <span className="font-medium">К/с:</span> 30101810100000000601</p>
           <p><span className="font-medium">Плательщик:</span> {payerName}</p>
-          <p><span className="font-medium">Лицевой счет:</span> {garageInfo}</p> {/* <-- ДОБАВИЛИ */}
-          <p><span className="font-medium">Назначение:</span> Оплата электроэнергии за {period}</p>
+          <p><span className="font-medium">Лицевой счет:</span> {garageInfo}</p>
+          {/* Назначение динамическое */}
+          <p><span className="font-medium">Назначение:</span> {serviceName} за {period}</p>
         </div>
       </div>
 
@@ -121,40 +121,15 @@ export default function PayForm({
         <div className="flex-grow border-t border-slate-200"></div>
       </div>
 
-      {/* Загрузка чека */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-slate-700 font-medium">
-          После оплаты прикрепите чек из банка:
-        </p>
-        
-        <input 
-          type="file" 
-          accept="image/*,.pdf" 
-          className="hidden" 
-          ref={fileInputRef}
-          onChange={(e) => e.target.files && setFile(e.target.files[0])}
-        />
-
-        <div 
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer ${
-            file ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'
-          }`}
-        >
+        <p className="text-sm text-slate-700 font-medium">После оплаты прикрепите чек:</p>
+        <input type="file" accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={(e) => e.target.files && setFile(e.target.files[0])} />
+        <div onClick={() => fileInputRef.current?.click()} className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer ${file ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'}`}>
           <Upload className={`mx-auto mb-2 ${file ? 'text-blue-500' : 'text-slate-400'}`} size={28} />
-          <p className="text-sm font-medium text-slate-700">
-            {file ? file.name : 'Нажмите, чтобы выбрать чек'}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">Фото или PDF</p>
+          <p className="text-sm font-medium text-slate-700">{file ? file.name : 'Нажмите, чтобы выбрать чек'}</p>
         </div>
-
         {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>}
-
-        <button 
-          type="submit"
-          disabled={!file || loading}
-          className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2"
-        >
+        <button type="submit" disabled={!file || loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2">
           {loading && <Loader2 size={18} className="animate-spin" />}
           {loading ? 'Отправка...' : 'Я оплатил, отправить чек'}
         </button>

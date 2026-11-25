@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import QRCode from 'react-qr-code';
-import { Printer, QrCode, X, FileSpreadsheet } from 'lucide-react';
+import { QrCode, X, FileSpreadsheet } from 'lucide-react';
 import AdjustChargeButton from './AdjustChargeButton';
 
 export default function AdminChargeActions({ charge }: { charge: any }) {
@@ -13,10 +13,22 @@ export default function AdminChargeActions({ charge }: { charge: any }) {
   const payerName = charge.owner.fullName;
   const garageInfo = `${charge.garage.row}-${charge.garage.number}`;
   
-  // БЕЗОПАСНАЯ ДАТА ДЛЯ QR (формат 11.2026)
   const safePeriod = new Date(charge.period).toLocaleDateString('ru-RU', { month: '2-digit', year: 'numeric' });
 
-  const qrData = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=Оплата электроэнергии, л/с ${garageInfo}, за ${safePeriod}|Sum=${sumInKopecks}|Payer=${payerName}|PersAcc=${garageInfo}`;
+  // Словарь названий для QR-кода
+  const serviceNames: Record<string, string> = {
+    electricity: 'Электроэнергия',
+    membership_fee: 'Членский взнос',
+    targeted_fee: 'Целевой взнос',
+    maintenance_fee: 'Содержание и ремонт',
+    penalty: 'Пени / Штраф',
+    debt_carryover: 'Старый долг'
+  };
+  
+  const serviceName = serviceNames[charge.paymentType] || 'Услуги ГСК';
+
+  // В строку Purpose подставляем serviceName
+  const qrData = `ST00012|Name=ГСК Контакт|PersonalAcc=40703810804000000059|BankName=Отделение 8637 Сбербанка России г. Архангельск|BIC=041117601|CorrespAcc=30101810100000000601|PayeeINN=2902027646|KPP=290202001|Purpose=${serviceName}, л/с ${garageInfo}, за ${safePeriod}|Sum=${sumInKopecks}|Payer=${payerName}|PersAcc=${garageInfo}`;
 
   return (
     <div className="flex justify-center items-center gap-1">
@@ -56,7 +68,7 @@ export default function AdminChargeActions({ charge }: { charge: any }) {
             </div>
             
             <p className="font-bold text-2xl text-slate-900">{amount.toFixed(2)} ₽</p>
-            <p className="text-xs text-slate-400 mt-2">Гараж: Ряд {charge.garage.row} · Бокс {charge.garage.number}</p>
+            <p className="text-xs text-slate-400 mt-2">{serviceName} · Ряд {charge.garage.row} · Бокс {charge.garage.number}</p>
           </div>
         </div>
       )}

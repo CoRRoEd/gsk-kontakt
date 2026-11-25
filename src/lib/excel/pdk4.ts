@@ -1,7 +1,6 @@
 import ExcelJS from 'exceljs';
 
 export function drawPdk4Sheet(worksheet: ExcelJS.Worksheet, charge: any, settings: any) {
-  // Задаем ширину колонок (чтобы визуально соответствовало бланку)
   const colWidths = [5, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12];
   colWidths.forEach((w, i) => {
     worksheet.getColumn(i + 1).width = w;
@@ -13,163 +12,142 @@ export function drawPdk4Sheet(worksheet: ExcelJS.Worksheet, charge: any, setting
   const todayStr = new Date().toLocaleDateString('ru-RU');
   const garageInfo = `Ряд ${charge.garage.row} · Блок ${charge.garage.block} · Бокс ${charge.garage.number}`;
 
-  const drawHalf = (startRow: number, title: string) => {
-    let r = startRow;
+  // Словарь для назначения платежа в Excel
+  const serviceNames: Record<string, string> = {
+    electricity: 'Электроэнергия',
+    membership_fee: 'Членский взнос',
+    targeted_fee: 'Целевой взнос',
+    maintenance_fee: 'Содержание и ремонт',
+    penalty: 'Пени / Штраф',
+    debt_carryover: 'Старый долг'
+  };
+  
+  const serviceName = serviceNames[charge.paymentType] || 'Услуги ГСК';
 
-    // Верхний правый угол: Форма № ПД-4
-    worksheet.mergeCells(`P${r}:R${r}`);
-    worksheet.getCell(`P${r}`).value = 'Форма № ПД-4';
-    worksheet.getCell(`P${r}`).alignment = { horizontal: 'right' };
-    worksheet.getCell(`P${r}`).font = { size: 10 };
-    r += 1;
+  const drawBlock = (startRow: number, title: string) => {
+    let row = startRow;
 
-    // Строка с Идентификатором и КПП
-    worksheet.getCell(`J${r}`).value = 'Идентификатор';
-    worksheet.getCell(`P${r}`).value = 'КПП';
-    r += 1;
-
-    // Заголовок (Извещение / Квитанция)
-    worksheet.mergeCells(`B${r}:D${r}`);
-    worksheet.getCell(`B${r}`).value = title;
-    worksheet.getCell(`B${r}`).font = { size: 14 };
-    r += 2;
-
-    // Наименование получателя
-    worksheet.mergeCells(`B${r}:M${r}`);
-    worksheet.getCell(`B${r}`).value = settings?.name || 'ГСК «Контакт»';
-    worksheet.getCell(`B${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`B${r}`).alignment = { horizontal: 'center' };
+    worksheet.mergeCells(`A${row}:G${row}`);
+    worksheet.getCell(`A${row}`).value = title;
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 14 };
+    worksheet.getCell(`A${row}`).alignment = { horizontal: 'center' };
     
-    worksheet.mergeCells(`B${r + 1}:J${r + 1}`);
-    worksheet.getCell(`B${r + 1}`).value = '(наименование получателя платежа)';
-    worksheet.getCell(`B${r + 1}`).font = { size: 8, color: 'gray' };
-    worksheet.getCell(`B${r + 1}`).alignment = { horizontal: 'center' };
-    r += 3;
+    worksheet.getCell(`H${row}`).value = 'Форма № ПД-4';
+    worksheet.getCell(`H${row}`).font = { size: 10 };
+    row += 2;
 
-    // ИНН и Р/с
-    worksheet.mergeCells(`B${r}:F${r}`);
-    worksheet.getCell(`B${r}`).value = settings?.inn || '2902027646';
-    worksheet.getCell(`B${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`B${r}`).alignment = { horizontal: 'center' };
-
-    worksheet.mergeCells(`H${r}:M${r}`);
-    worksheet.getCell(`H${r}`).value = '40703810804000000059';
-    worksheet.getCell(`H${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`H${r}`).alignment = { horizontal: 'center' };
-
-    worksheet.getCell(`B${r + 1}`).value = '(ИНН получателя)';
-    worksheet.getCell(`B${r + 1}`).font = { size: 8, color: 'gray' };
-    worksheet.getCell(`H${r + 1}`).value = '(номер счета)';
-    worksheet.getCell(`H${r + 1}`).font = { size: 8, color: 'gray' };
+    worksheet.mergeCells(`A${row}:G${row}`);
+    worksheet.getCell(`A${row}`).value = settings?.name || 'ГСК «Контакт»';
+    worksheet.getCell(`A${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`A${row}`).alignment = { horizontal: 'center' };
     
-    worksheet.mergeCells(`P${r}:R${r}`);
-    worksheet.getCell(`P${r}`).value = '(код ОКТМО)';
-    worksheet.getCell(`P${r}`).font = { size: 8, color: 'gray' };
-    r += 3;
+    worksheet.mergeCells(`A${row + 1}:G${row + 1}`);
+    worksheet.getCell(`A${row + 1}`).value = '(наименование получателя платежа)';
+    worksheet.getCell(`A${row + 1}`).font = { size: 8, color: 'gray' };
+    worksheet.getCell(`A${row + 1}`).alignment = { horizontal: 'center' };
+    row += 3;
 
-    // Банк
-    worksheet.mergeCells(`B${r}:M${r}`);
-    worksheet.getCell(`B${r}`).value = 'Отделение 8637 Сбербанка России г. Архангельск';
-    worksheet.getCell(`B${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`B${r}`).alignment = { horizontal: 'center' };
+    worksheet.mergeCells(`A${row}:C${row}`);
+    worksheet.getCell(`A${row}`).value = settings?.inn || '2902027646';
+    worksheet.getCell(`A${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`A${row}`).alignment = { horizontal: 'center' };
+
+    worksheet.mergeCells(`E${row}:G${row}`);
+    worksheet.getCell(`E${row}`).value = '40703810804000000059';
+    worksheet.getCell(`E${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`E${row}`).alignment = { horizontal: 'center' };
+
+    worksheet.getCell(`A${row + 1}`).value = '(ИНН получателя)';
+    worksheet.getCell(`A${row + 1}`).font = { size: 8, color: 'gray' };
+    worksheet.getCell(`E${row + 1}`).value = '(номер счета)';
+    worksheet.getCell(`E${row + 1}`).font = { size: 8, color: 'gray' };
+    row += 3;
+
+    worksheet.mergeCells(`A${row}:G${row}`);
+    worksheet.getCell(`A${row}`).value = 'Отделение 8637 Сбербанка России г. Архангельск';
+    worksheet.getCell(`A${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`A${row}`).alignment = { horizontal: 'center' };
     
-    worksheet.mergeCells(`B${r + 1}:J${r + 1}`);
-    worksheet.getCell(`B${r + 1}`).value = '(наименование банка получателя платежа)';
-    worksheet.getCell(`B${r + 1}`).font = { size: 8, color: 'gray' };
-    worksheet.getCell(`B${r + 1}`).alignment = { horizontal: 'center' };
-    r += 3;
+    worksheet.mergeCells(`A${row + 1}:G${row + 1}`);
+    worksheet.getCell(`A${row + 1}`).value = '(наименование банка)';
+    worksheet.getCell(`A${row + 1}`).font = { size: 8, color: 'gray' };
+    worksheet.getCell(`A${row + 1}`).alignment = { horizontal: 'center' };
+    row += 3;
 
-    // БИК и Кор/счет
-    worksheet.getCell(`B${r}`).value = 'БИК:';
-    worksheet.mergeCells(`C${r}:F${r}`);
-    worksheet.getCell(`C${r}`).value = '041117601';
-    worksheet.getCell(`C${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`C${r}`).alignment = { horizontal: 'center' };
+    worksheet.mergeCells(`A${row}:C${row}`);
+    worksheet.getCell(`A${row}`).value = '041117601';
+    worksheet.getCell(`A${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`A${row}`).alignment = { horizontal: 'center' };
 
-    worksheet.getCell(`H${r}`).value = 'Кор./сч.:';
-    worksheet.mergeCells(`I${r}:M${r}`);
-    worksheet.getCell(`I${r}`).value = '30101810100000000601';
-    worksheet.getCell(`I${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`I${r}`).alignment = { horizontal: 'center' };
-    r += 3;
+    worksheet.mergeCells(`E${row}:G${row}`);
+    worksheet.getCell(`E${row}`).value = '30101810100000000601';
+    worksheet.getCell(`E${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`E${row}`).alignment = { horizontal: 'center' };
 
-    // Назначение
-    worksheet.mergeCells(`B${r}:M${r}`);
-    worksheet.getCell(`B${r}`).value = `Оплата электроэнергии за ${periodStr}`;
-    worksheet.getCell(`B${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`B${r}`).alignment = { horizontal: 'center' };
+    worksheet.getCell(`A${row + 1}`).value = 'БИК';
+    worksheet.getCell(`A${row + 1}`).font = { size: 8, color: 'gray' };
+    worksheet.getCell(`E${row + 1}`).value = 'Кор./сч.';
+    worksheet.getCell(`E${row + 1}`).font = { size: 8, color: 'gray' };
+    row += 3;
 
-    worksheet.mergeCells(`B${r + 1}:J${r + 1}`);
-    worksheet.getCell(`B${r + 1}`).value = '(наименование платежа)';
-    worksheet.getCell(`B${r + 1}`).font = { size: 8, color: 'gray' };
-    worksheet.getCell(`B${r + 1}`).alignment = { horizontal: 'center' };
-
-    worksheet.mergeCells(`P${r}:R${r}`);
-    worksheet.getCell(`P${r}`).value = '(КБК)';
-    worksheet.getCell(`P${r}`).font = { size: 8, color: 'gray' };
-    r += 3;
-
-    // ФИО
-    worksheet.getCell(`B${r}`).value = 'Ф.И.О. плательщика:';
-    worksheet.mergeCells(`E${r}:M${r}`);
-    worksheet.getCell(`E${r}`).value = charge.owner.fullName;
-    worksheet.getCell(`E${r}`).border = { bottom: { style: 'thin' } };
-    r += 2;
-
-    // Адрес
-    worksheet.getCell(`B${r}`).value = 'Адрес плательщика:';
-    worksheet.mergeCells(`E${r}:M${r}`);
-    worksheet.getCell(`E${r}`).value = garageInfo;
-    worksheet.getCell(`E${r}`).border = { bottom: { style: 'thin' } };
-    r += 2;
-
-    // Сумма
-    worksheet.getCell(`B${r}`).value = 'Сумма платежа:';
+    worksheet.mergeCells(`A${row}:G${row}`);
+    // ДИНАМИЧЕСКОЕ НАЗНАЧЕНИЕ ПЛАТЕЖА
+    worksheet.getCell(`A${row}`).value = `${serviceName} за ${periodStr}`;
+    worksheet.getCell(`A${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`A${row}`).alignment = { horizontal: 'center' };
     
-    worksheet.mergeCells(`E${r}:H${r}`);
-    worksheet.getCell(`E${r}`).value = rub;
-    worksheet.getCell(`E${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`E${r}`).alignment = { horizontal: 'right' };
-    worksheet.getCell(`I${r}`).value = 'руб.';
+    worksheet.mergeCells(`A${row + 1}:G${row + 1}`);
+    worksheet.getCell(`A${row + 1}`).value = '(наименование платежа)';
+    worksheet.getCell(`A${row + 1}`).font = { size: 8, color: 'gray' };
+    worksheet.getCell(`A${row + 1}`).alignment = { horizontal: 'center' };
+    row += 3;
+
+    worksheet.getCell(`A${row}`).value = 'Ф.И.О. плательщика:';
+    worksheet.mergeCells(`B${row}:G${row}`);
+    worksheet.getCell(`B${row}`).value = charge.owner.fullName;
+    worksheet.getCell(`B${row}`).border = { bottom: { style: 'thin' } };
+    row += 2;
+
+    worksheet.getCell(`A${row}`).value = 'Адрес плательщика:';
+    worksheet.mergeCells(`B${row}:G${row}`);
+    worksheet.getCell(`B${row}`).value = garageInfo;
+    worksheet.getCell(`B${row}`).border = { bottom: { style: 'thin' } };
+    row += 3;
+
+    worksheet.getCell(`A${row}`).value = 'Сумма платежа:';
+    worksheet.getCell(`B${row}`).value = rub;
+    worksheet.getCell(`B${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`B${row}`).alignment = { horizontal: 'right' };
+    worksheet.getCell(`C${row}`).value = 'руб.';
     
-    worksheet.mergeCells(`J${r}:L${r}`);
-    worksheet.getCell(`J${r}`).value = kop;
-    worksheet.getCell(`J${r}`).border = { bottom: { style: 'thin' } };
-    worksheet.getCell(`J${r}`).alignment = { horizontal: 'right' };
-    worksheet.getCell(`M${r}`).value = 'коп.';
-
-    worksheet.mergeCells(`P${r}:R${r}`);
-    worksheet.getCell(`P${r}`).value = `Дата: ${todayStr}`;
-    r += 2;
-
-    // Подпись
-    worksheet.getCell(`B${r}`).value = 'Подпись плательщика:';
-    worksheet.mergeCells(`E${r}:M${r}`);
-    worksheet.getCell(`E${r}`).border = { bottom: { style: 'thin' } };
-    r += 2;
-
-    // Кассир
-    worksheet.getCell(`B${r}`).value = 'Кассир';
-    worksheet.mergeCells(`E${r}:M${r}`);
-    worksheet.getCell(`E${r}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`D${row}`).value = kop;
+    worksheet.getCell(`D${row}`).border = { bottom: { style: 'thin' } };
+    worksheet.getCell(`D${row}`).alignment = { horizontal: 'right' };
+    worksheet.getCell(`E${row}`).value = 'коп.';
     
-    return r + 2;
+    worksheet.getCell(`G${row}`).value = `Дата: ${todayStr}`;
+    worksheet.getCell(`G${row}`).alignment = { horizontal: 'right' };
+    row += 3;
+
+    worksheet.getCell(`A${row}`).value = 'Плательщик (подпись):';
+    worksheet.mergeCells(`B${row}:D${row}`);
+    worksheet.getCell(`B${row}`).border = { bottom: { style: 'thin' } };
+    
+    worksheet.getCell(`E${row}`).value = 'Кассир:';
+    worksheet.mergeCells(`F${row}:G${row}`);
+    worksheet.getCell(`F${row}`).border = { bottom: { style: 'thin' } };
+    
+    return row + 3;
   };
 
-  // Рисуем Извещение
-  let nextRow = drawHalf(1, 'И з в е щ е н и е');
-
-  // Линия отреза
-  worksheet.mergeCells(`A${nextRow}:R${nextRow}`);
+  let nextRow = drawBlock(1, 'И з в е щ е н и е');
+  worksheet.mergeCells(`A${nextRow}:H${nextRow}`);
   worksheet.getCell(`A${nextRow}`).border = { bottom: { style: 'dashed' } };
-  nextRow += 1;
+  nextRow += 2;
+  drawBlock(nextRow, 'К в и т а н ц и я');
 
-  // Рисуем Квитанцию
-  drawHalf(nextRow, 'К в и т а н ц и я');
-
-  // Настройки печати
   worksheet.pageSetup = {
-    paperSize: 9, // A4
+    paperSize: 9,
     orientation: 'portrait',
     fitToPage: true,
     fitToWidth: 1,

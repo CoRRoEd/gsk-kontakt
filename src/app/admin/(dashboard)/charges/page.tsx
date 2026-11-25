@@ -6,7 +6,6 @@ import { sessionOptions, SessionData } from '@/lib/auth/session';
 import GenerateButton from './GenerateButton';
 import ManualChargeButton from './ManualChargeButton';
 import AdminChargeActions from './AdminChargeActions';
-import PrintAllButton from './PrintAllButton';
 import { Search } from 'lucide-react';
 
 export default async function ChargesPage({ 
@@ -41,11 +40,12 @@ export default async function ChargesPage({
   // ПРЕОБРАЗУЕМ Decimal и Date в безопасные типы для клиента
   const safeCharges = charges.map(c => ({
     id: c.id,
-    period: c.period.toISOString(), // строка
+    period: c.period.toISOString(), 
     amount: Number(c.amount),
     consumptionT1: Number(c.consumptionT1),
     consumptionT2: c.consumptionT2 ? Number(c.consumptionT2) : null,
     status: c.status,
+    paymentType: c.paymentType, // <-- ДОБАВИЛИ ЭТУ СТРОКУ!
     owner: { fullName: c.owner.fullName },
     garage: { row: c.garage.row, block: c.garage.block, number: c.garage.number }
   }));
@@ -74,7 +74,6 @@ export default async function ChargesPage({
             <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
           </form>
           
-          <PrintAllButton />
           <ManualChargeButton />
           <GenerateButton />
         </div>
