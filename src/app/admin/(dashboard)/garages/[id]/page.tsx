@@ -3,12 +3,13 @@ import { cookies } from 'next/headers';
 import { redirect, notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { sessionOptions, SessionData } from '@/lib/auth/session';
-import { ArrowLeft, User, Phone } from 'lucide-react';
+import { ArrowLeft, User, Phone, Gauge } from 'lucide-react';
 import Link from 'next/link';
 import EditGarageForm from './EditGarageForm';
 import SelectOwnerModal from './SelectOwnerModal';
 import ChangeOwnerForm from './ChangeOwnerForm';
 import DeleteGarageButton from './DeleteGarageButton';
+import GarageMeterAction from './GarageMeterAction'; // <-- НОВЫЙ ИМПОРТ
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function GarageCardPage({ params }: { params: Promise<{ id:
   const garage = await prisma.garage.findUnique({
     where: { id },
     include: {
-      balance: true, // <-- Важно для расчета долга гаража
+      balance: true,
       owners: { 
         where: { endedAt: null },
         include: { owner: { include: { user: { include: { phones: true } } } } } 
@@ -29,7 +30,6 @@ export default async function GarageCardPage({ params }: { params: Promise<{ id:
       meters: { 
         where: { status: 'active' },
         include: {
-          // Подтягиваем последнее показание для валидации при замене ПУ
           readings: {
             orderBy: { period: 'desc' },
             take: 1
@@ -55,11 +55,11 @@ export default async function GarageCardPage({ params }: { params: Promise<{ id:
   const activeOwner = garage.owners[0]?.owner;
   const phone = activeOwner?.user?.phones?.[0]?.phone || 'Нет телефона';
   
-  // 3. Считаем долг именно по этому ГАРАЖУ, а не по всем гаражам собственника
+  // 3. Считаем долг именно по этому ГАРАЖУ
   const garageDebt = Number(garage.balance?.debtAmount || 0); 
   const hasDebt = garageDebt > 0;
 
-  // 4. Словарь статусов для красивого бейджа
+  // 4. Словарь статусов
   const statusLabels: Record<string, { text: string, color: string }> = {
     active: { text: 'Активен', color: 'bg-green-100 text-green-700' },
     under_construction: { text: 'Строительство', color: 'bg-amber-100 text-amber-700' },
@@ -69,7 +69,7 @@ export default async function GarageCardPage({ params }: { params: Promise<{ id:
   };
   const currentStatus = statusLabels[garage.status] || statusLabels.active;
 
-  // 5. Превращаем Decimal в обычные числа для безопасной передачи в клиентские компоненты
+  // 5. Превращаем Decimal в числа
   const safeMeters = garage.meters.map(m => ({
     id: m.id,
     serialNumber: m.serialNumber,
@@ -77,10 +77,11 @@ export default async function GarageCardPage({ params }: { params: Promise<{ id:
     initialReadingT1: Number(m.initialReadingT1),
     initialReadingT2: m.initialReadingT2 ? Number(m.initialReadingT2) : null,
     status: m.status,
-    // Передаем последнее переданное показание (или начальное, если передач еще не было)
     prevReadingT1: m.readings[0] ? Number(m.readings[0].readingT1) : Number(m.initialReadingT1),
     prevReadingT2: m.readings[0]?.readingT2 ? Number(m.readings[0].readingT2) : (m.initialReadingT2 ? Number(m.initialReadingT2) : null)
   }));
+
+  const activeMeter = safeMeters.length > 0 ? safeMeters[0] : null;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-4">
@@ -125,13 +126,30 @@ export default async function GarageCardPage({ params }: { params: Promise<{ id:
             )}
           </div>
           <div className="pl-3 border-l border-slate-200 h-full flex items-center">
-            {/* Кнопка выбора из существующих */}
             <SelectOwnerModal garageId={garage.id} owners={ownerOptions} />
           </div>
         </div>
       </div>
 
-      {/* Основной белый блок */}
+      {/* БЛОК ПРИБОРА УЧЁТА (Добавлен для электрика) */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <Gauge size={20} className="text-slate-400" />
+            Прибор учёта (ПУ)
+          </h2>
+        </div>
+        
+        {activeMeter ? (
+          <GarageMeterAction garageId={garage.id} activeMeter={activeMeter} />
+        ) : (
+          <div className="bg-amber-50 text-amber-800 p-4 rounded-xl border border-amber-200 text-sm flex items-center gap-3">
+            У гаража нет активного прибора учёта. Требуется установка нового ПУ.
+          </div>
+        )}
+      </div>
+
+      {/* Основной белый блок (Характеристики и управление) */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
         <EditGarageForm 
           garage={{

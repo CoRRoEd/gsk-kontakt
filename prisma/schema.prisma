@@ -273,6 +273,7 @@ enum ProblemType {
   negative_reading_attempts
   no_readings_multiple_periods
   repeated_payment_failures
+  seal_violation // <-- ДОБАВЛЕНО: Нарушение пломб
   other
 }
 
@@ -888,6 +889,7 @@ model AdPhoto {
 model Appeal {
   id            String       @id @default(uuid())
   userId        String?      @map("user_id")
+   garageId     String?      @map("garage_id")
   topic         AppealTopic
   subject       String
   body          String
