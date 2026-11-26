@@ -95,7 +95,7 @@ export default function SettingsForm({ initialData }: { initialData: any }) {
 
       {/* Правила расчетов */}
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-        <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2">Правила расчётов и показаний</h3>
+        <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2">Правила расчётов и подачи показаний ПУ</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Норматив (кВт·ч/мес)</label>

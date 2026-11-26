@@ -75,7 +75,6 @@ export default async function AppPage() {
               </p>
               
               <div className="flex flex-wrap items-center gap-3">
-                {/* ИЗМЕНЕН ТЕКСТ КНОПКИ ЗДЕСЬ */}
                 <Link href="/app/charges" className="inline-block bg-white text-blue-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-50 transition">
                   Подробно
                 </Link>
@@ -115,8 +114,15 @@ export default async function AppPage() {
                     latestReading.period.getMonth() === now.getMonth() && 
                     latestReading.period.getFullYear() === now.getFullYear();
 
-                  // Ищем неоплаченный счет конкретно для ЭТОГО гаража
-                  const garageCharge = unpaidCharges.find(c => c.garageId === og.garage.id);
+                  // Ищем ВСЕ неоплаченные счета конкретно для ЭТОГО гаража
+                  const garageCharges = unpaidCharges.filter(c => c.garageId === og.garage.id);
+                  
+                  // Маппим под формат компонента RequestInvoiceButton
+                  const mappedCharges = garageCharges.map(c => ({
+                    id: c.id,
+                    amount: Number(c.amount),
+                    paymentType: c.paymentType
+                  }));
 
                   return (
                     <div key={og.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col relative overflow-hidden group">
@@ -154,11 +160,11 @@ export default async function AppPage() {
                           </Link>
                         )}
 
-                        {/* Умная кнопка: Получить счёт или Оплатить счёт */}
-                        {isSubmittedThisMonth || garageCharge ? (
+                        {/* Умная кнопка: Получить счёт или Оплатить долги */}
+                        {(isSubmittedThisMonth || garageCharges.length > 0) ? (
                           <RequestInvoiceButton 
                             garageId={og.garage.id} 
-                            activeChargeId={garageCharge ? garageCharge.id : null} 
+                            activeCharges={mappedCharges} 
                           />
                         ) : (
                           <button disabled className="w-full flex items-center justify-center gap-2 bg-slate-50 text-slate-400 py-2.5 rounded-lg text-sm font-medium border border-slate-100 cursor-not-allowed">

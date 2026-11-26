@@ -2,34 +2,56 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, FileText, Wallet } from 'lucide-react';
+import { Loader2, FileText, Wallet, Receipt } from 'lucide-react';
 import Link from 'next/link';
+
+interface ActiveCharge {
+  id: string;
+  amount: number;
+  paymentType: string;
+}
 
 export default function RequestInvoiceButton({ 
   garageId, 
-  activeChargeId 
+  activeCharges = [] 
 }: { 
   garageId: string; 
-  activeChargeId: string | null; 
+  activeCharges: ActiveCharge[]; 
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Если счет уже есть (Свет начислен), показываем "Оплатить счёт"
-  if (activeChargeId) {
+  // 1. Если есть неоплаченные счета
+  if (activeCharges.length > 0) {
+    // Если счет один — ведем на страницу оплаты этого счета
+    if (activeCharges.length === 1) {
+      return (
+        <Link
+          href={`/app/charges/${activeCharges[0].id}/pay`}
+          className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm"
+        >
+          <Wallet size={16} />
+          Оплатить счёт
+        </Link>
+      );
+    }
+
+    // Если долгов несколько — ведем на страницу массовой оплаты
+    const totalAmount = activeCharges.reduce((sum, charge) => sum + Number(charge.amount), 0);
+    
     return (
       <Link
-        href={`/app/charges/${activeChargeId}/pay`}
+        href={`/app/charges/pay-all?garageId=${garageId}`}
         className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm"
       >
-        <Wallet size={16} />
-        Оплатить счёт
+        <Receipt size={16} />
+        Оплатить долги ({activeCharges.length}) на {totalAmount.toLocaleString('ru-RU')} ₽
       </Link>
     );
   }
 
-  // Если счета нет, но есть переданные показания, показываем "Получить счёт"
+  // 2. Если счетов нет, но есть переданные показания, запрашиваем формирование счёта
   const handleRequest = async () => {
     setLoading(true);
     setError('');
